@@ -1,7 +1,6 @@
 import {
   Injectable,
   NotFoundException,
-  BadRequestException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
@@ -18,7 +17,7 @@ export class PaymentMethodsService {
     @InjectRepository(User)
     private userRepo: Repository<User>,
     private stripeService: StripeService,
-  ) {}
+  ) { }
 
   async getUserPaymentMethods(userId: string): Promise<PaymentMethod[]> {
     return this.paymentMethodRepo.find({
@@ -32,16 +31,29 @@ export class PaymentMethodsService {
   > {
     const configs =
       await this.stripeService.getPaymentMethodConfigurations();
-
     const enabledTypes: { type: string; label: string }[] = [];
 
+    // Known payment method types in Stripe
+    const paymentMethodTypes = [
+      'acss_debit', 'affirm', 'afterpay_clearpay', 'alipay', 'alma',
+      'amazon_pay', 'apple_pay', 'au_becs_debit', 'bacs_debit',
+      'bancontact', 'billie', 'blik', 'boleto', 'card', 'cartes_bancaires',
+      'cashapp', 'crypto', 'customer_balance', 'eps', 'fpx', 'giropay',
+      'google_pay', 'grabpay', 'ideal', 'jcb', 'kakao_pay', 'klarna',
+      'konbini', 'kr_card', 'link', 'mb_way', 'mobilepay', 'multibanco',
+      'naver_pay', 'nz_bank_account', 'oxxo', 'p24', 'pay_by_bank',
+      'payco', 'paynow', 'paypal', 'payto', 'pix', 'promptpay',
+      'revolut_pay', 'samsung_pay', 'satispay', 'sepa_debit', 'sofort',
+      'swish', 'twint', 'us_bank_account', 'wechat_pay', 'zip'
+    ];
+
     for (const config of configs.data) {
-      for (const [type, settings] of Object.entries(config)) {
+      for (const type of paymentMethodTypes) {
+        const settings = (config as any)[type];
         if (
+          settings &&
           typeof settings === 'object' &&
-          settings !== null &&
-          'display_preference' in settings &&
-          (settings as any).display_preference?.preference === 'on'
+          settings.available === true
         ) {
           const label = PAYMENT_METHOD_LABELS[type] ?? type;
           if (!enabledTypes.some((t) => t.type === type)) {
@@ -57,22 +69,59 @@ export class PaymentMethodsService {
   async createSetupIntent(
     userId: string,
   ): Promise<{ clientSecret: string }> {
-    const user = await this.findUserOrFail(userId);
+    let user = await this.findUserOrFail(userId);
 
+    // Auto-create Stripe customer if missing
     if (!user.stripeCustomerId) {
-      throw new BadRequestException(
-        'User does not have a Stripe customer account',
+      const idempotencyKey = generateUniqueIdempotencyKey(
+        'create_customer',
+        userId,
       );
+      const customer = await this.stripeService.createCustomer(
+        {
+          email: user.email,
+          name: user.name ?? undefined,
+          metadata: { userId },
+        },
+        idempotencyKey,
+      );
+      user = await this.userRepo.save({
+        ...user,
+        stripeCustomerId: customer.id,
+      });
     }
 
     const idempotencyKey = generateUniqueIdempotencyKey(
       'setup_intent',
       userId,
+      `${Date.now()}_${Math.random().toString(36).slice(2, 10)}`,
     );
 
+    // Get available payment method types to ensure the Setup Intent
+    // allows the same payment methods shown as "available"
+    const availableTypes = await this.getAvailablePaymentMethodTypes();
+
+    // Filter out payment method types that are NOT compatible with Setup Intents
+    // BNPL (Buy Now Pay Later) methods and some region-specific methods only work
+    // with Payment Intents, not Setup Intents for saving payment methods
+    const setupIntentCompatibleTypes = [
+      'card',
+      'sepa_debit',
+      'us_bank_account',
+      'bacs_debit',
+      'au_becs_debit',
+      'cashapp',
+      'link',
+    ];
+
+    const paymentMethodTypes = availableTypes
+      .map((t) => t.type)
+      .filter((type) => setupIntentCompatibleTypes.includes(type));
+
     const setupIntent = await this.stripeService.createSetupIntent(
-      user.stripeCustomerId,
+      user?.stripeCustomerId!,
       idempotencyKey,
+      paymentMethodTypes,
     );
 
     return { clientSecret: setupIntent.client_secret! };

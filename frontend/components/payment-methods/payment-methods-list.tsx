@@ -1,6 +1,7 @@
 'use client';
 
 import { useState } from 'react';
+import Link from 'next/link';
 import {
   useGetPaymentMethodsQuery,
   useGetAvailableMethodTypesQuery,
@@ -8,14 +9,13 @@ import {
   useDeleteMethodMutation,
 } from '@/lib/store/payment-methods-api';
 import { PaymentMethodCard } from './payment-method-card';
-import { AddPaymentMethodModal } from './add-payment-method-modal';
+import { PaymentMethodIcon } from './payment-method-icon';
 
 export function PaymentMethodsList() {
   const { data: savedMethods, isLoading: methodsLoading, isError: methodsError } = useGetPaymentMethodsQuery();
   const { data: availableTypes, isLoading: typesLoading } = useGetAvailableMethodTypesQuery();
   const [setDefaultMethod] = useSetDefaultMethodMutation();
   const [deleteMethod] = useDeleteMethodMutation();
-  const [showAddModal, setShowAddModal] = useState(false);
   const [error, setError] = useState('');
 
   const loading = methodsLoading || typesLoading;
@@ -36,10 +36,6 @@ export function PaymentMethodsList() {
     }
   }
 
-  function handleAddSuccess() {
-    setShowAddModal(false);
-  }
-
   if (loading) {
     return <div className="text-gray-500">Loading payment methods...</div>;
   }
@@ -56,12 +52,12 @@ export function PaymentMethodsList() {
       <section>
         <div className="flex items-center justify-between">
           <h2 className="text-lg font-medium text-gray-900">Your Payment Methods</h2>
-          <button
-            onClick={() => setShowAddModal(true)}
+          <Link
+            href="/payment-methods/add"
             className="rounded-md bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 transition-colors"
           >
             Add Payment Method
-          </button>
+          </Link>
         </div>
 
         {!savedMethods || savedMethods.length === 0 ? (
@@ -94,26 +90,12 @@ export function PaymentMethodsList() {
               key={pm.type}
               className="flex items-center gap-3 rounded-lg border border-gray-200 bg-white px-4 py-3"
             >
-              <img
-                src={`/icons/payment-methods/${pm.type.replace('_', '-')}.svg`}
-                alt={pm.label}
-                width={32}
-                height={22}
-                className="flex-shrink-0"
-              />
+              <PaymentMethodIcon type={pm.type} size={32} className="flex-shrink-0" />
               <span className="text-sm font-medium text-gray-700">{pm.label}</span>
             </div>
           ))}
         </div>
       </section>
-
-      {/* Add Payment Method Modal */}
-      {showAddModal && (
-        <AddPaymentMethodModal
-          onClose={() => setShowAddModal(false)}
-          onSuccess={handleAddSuccess}
-        />
-      )}
     </div>
   );
 }

@@ -25,11 +25,20 @@ export class StripeService {
   async createSetupIntent(
     customerId: string,
     idempotencyKey: string,
+    paymentMethodTypes?: string[],
   ): Promise<Stripe.SetupIntent> {
-    return this.stripe.setupIntents.create(
-      { customer: customerId, usage: 'off_session' },
-      { idempotencyKey },
-    );
+    const params: Stripe.SetupIntentCreateParams = {
+      customer: customerId,
+      usage: 'off_session',
+    };
+
+    // Only specify payment_method_types if provided
+    // This ensures the Setup Intent allows the same payment methods shown as "available"
+    if (paymentMethodTypes && paymentMethodTypes.length > 0) {
+      params.payment_method_types = paymentMethodTypes;
+    }
+
+    return this.stripe.setupIntents.create(params, { idempotencyKey });
   }
 
   async createPaymentIntent(

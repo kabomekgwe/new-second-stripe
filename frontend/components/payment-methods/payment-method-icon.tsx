@@ -21,6 +21,17 @@ const ICON_MAP: Record<string, string> = {
   link: '/icons/payment-methods/link.svg',
   apple_pay: '/icons/payment-methods/apple-pay.svg',
   google_pay: '/icons/payment-methods/google-pay.svg',
+  // Additional payment method types
+  cashapp: '/icons/payment-methods/cashapp.svg',
+  affirm: '/icons/payment-methods/affirm.svg',
+  amazon_pay: '/icons/payment-methods/amazon-pay.svg',
+  blik: '/icons/payment-methods/blik.svg',
+  card: '/icons/payment-methods/card.svg',
+  customer_balance: '/icons/payment-methods/customer-balance.svg',
+  kakao_pay: '/icons/payment-methods/kakao-pay.svg',
+  naver_pay: '/icons/payment-methods/naver-pay.svg',
+  payco: '/icons/payment-methods/payco.svg',
+  samsung_pay: '/icons/payment-methods/samsung-pay.svg',
 };
 
 interface PaymentMethodIconProps {
