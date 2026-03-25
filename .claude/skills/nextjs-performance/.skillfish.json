@@ -1,0 +1,10 @@
+{
+  "version": 2,
+  "name": "nextjs-performance",
+  "owner": "jovermier",
+  "repo": "cc-stack-marketplace",
+  "path": "plugins/cc-nextjs/skills/nextjs-performance",
+  "branch": "main",
+  "sha": "3e342c7e5a485a242e2c3b6aaa053da093179cba",
+  "source": "manual"
+}

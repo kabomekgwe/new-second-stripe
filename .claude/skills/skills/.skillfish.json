@@ -1,0 +1,10 @@
+{
+  "version": 2,
+  "name": "skills",
+  "owner": "fortiumpartners",
+  "repo": "ensemble",
+  "path": "packages/blazor/skills",
+  "branch": "main",
+  "sha": "3728792de50c2611bf34c07ad8cb8833b274b171",
+  "source": "manual"
+}

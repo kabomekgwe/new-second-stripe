@@ -1,0 +1,10 @@
+{
+  "version": 2,
+  "name": "stripe-payments",
+  "owner": "lobbi-docs",
+  "repo": "claude",
+  "path": ".claude/skills/stripe-payments",
+  "branch": "main",
+  "sha": "6629f0def515b413732d29b4cc119ede0ec8dd09",
+  "source": "manual"
+}

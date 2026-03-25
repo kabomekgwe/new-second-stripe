@@ -1,0 +1,10 @@
+{
+  "version": 2,
+  "name": "nextjs-server-components",
+  "owner": "jovermier",
+  "repo": "cc-stack-marketplace",
+  "path": "plugins/cc-nextjs/skills/nextjs-server-components",
+  "branch": "main",
+  "sha": "49f245dd29126d0395d661caa4f5d4f22bd5db5c",
+  "source": "manual"
+}

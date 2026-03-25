@@ -1,0 +1,10 @@
+{
+  "version": 2,
+  "name": "stripe-integration",
+  "owner": "amurata",
+  "repo": "cc-tools",
+  "path": "i18n/ja/plugins/payment-processing/skills/stripe-integration",
+  "branch": "main",
+  "sha": "b1803c8f91569ed149c1f575edab5d15c6049802",
+  "source": "manual"
+}

@@ -1,0 +1,10 @@
+{
+  "version": 2,
+  "name": "agent-routing",
+  "owner": "m16khb",
+  "repo": "claude-integration",
+  "path": "plugins/nestjs-backend/skills/agent-routing",
+  "branch": "main",
+  "sha": "545ebd36ff180127462d779c27c17e407edf393b",
+  "source": "manual"
+}

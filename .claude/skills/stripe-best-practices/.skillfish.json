@@ -1,0 +1,10 @@
+{
+  "version": 2,
+  "name": "stripe-best-practices",
+  "owner": "kgadek",
+  "repo": "kgadek-claude-plugin",
+  "path": "ai-spec/2026-01-21-sdd-inspirations/references/anthropics-claude-plugins-official/external_plugins/stripe/skills/stripe-best-practices",
+  "branch": "main",
+  "sha": "8e5f5b2dc4faf807852322e15c2d6f0240f52039",
+  "source": "manual"
+}

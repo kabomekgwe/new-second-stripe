@@ -1,0 +1,10 @@
+{
+  "version": 2,
+  "name": "nestjs-queue-architect",
+  "owner": "shipshitdev",
+  "repo": "library",
+  "path": "bundles/infrastructure/skills/nestjs-queue-architect",
+  "branch": "master",
+  "sha": "edaf3aa499f12f5e8a74e08f18344f88f42a1918",
+  "source": "manual"
+}

@@ -1,0 +1,10 @@
+{
+  "version": 2,
+  "name": "stripe-implementer",
+  "owner": "shipshitdev",
+  "repo": "library",
+  "path": "bundles/payments/skills/stripe-implementer",
+  "branch": "master",
+  "sha": "0018a19d65c75a83914fb7f3328f49c3d3338930",
+  "source": "manual"
+}

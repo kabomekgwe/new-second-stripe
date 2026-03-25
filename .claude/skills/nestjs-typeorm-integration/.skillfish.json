@@ -1,0 +1,10 @@
+{
+  "version": 2,
+  "name": "nestjs-typeorm-integration",
+  "owner": "agentivecity",
+  "repo": "skillfactory",
+  "path": ".claude/skills/nestjs-typeorm-integration",
+  "branch": "main",
+  "sha": "2505df5368e99be6a2a16e122d23796e9cbd8bc2",
+  "source": "manual"
+}

@@ -1,0 +1,10 @@
+{
+  "version": 2,
+  "name": "nestjs-guards-interceptors",
+  "owner": "thebushidocollective",
+  "repo": "han",
+  "path": "plugins/frameworks/nestjs/skills/nestjs-guards-interceptors",
+  "branch": "main",
+  "sha": "dda60982bd4f7b3bca5c8369553b18b83c9760f3",
+  "source": "manual"
+}

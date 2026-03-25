@@ -1,0 +1,10 @@
+{
+  "version": 2,
+  "name": "debug-nestjs",
+  "owner": "snakeo",
+  "repo": "claude-debug-and-refactor-skills-plugin",
+  "path": "plugins/debug-and-refactor/skills/debug-nestjs",
+  "branch": "master",
+  "sha": "d1c7733ea8b0e72752d9d75a494ec2e8db023fd3",
+  "source": "manual"
+}
