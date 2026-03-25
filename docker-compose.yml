@@ -1,0 +1,87 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    ports:
+      - "5481:5432"
+    environment:
+      POSTGRES_DB: stripe_app
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6382:6379"
+    volumes:
+      - redisdata:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+  core-backend:
+    build:
+      context: .
+      dockerfile: core-backend/Dockerfile
+    ports:
+      - "4917:4917"
+    environment:
+      PORT: 4917
+      DB_HOST: postgres
+      DB_PORT: 5432
+      DB_NAME: stripe_app
+      DB_USER: postgres
+      DB_PASSWORD: postgres
+      REDIS_URL: redis://redis:6379
+      SESSION_SECRET: dev-session-secret-change-in-prod
+      STRIPE_SECRET_KEY: ${STRIPE_SECRET_KEY:-sk_test_xxx}
+      STRIPE_PUBLISHABLE_KEY: ${STRIPE_PUBLISHABLE_KEY:-pk_test_xxx}
+      FRONTEND_URL: http://localhost:3847
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  webhooks-backend:
+    build:
+      context: .
+      dockerfile: webhooks-backend/Dockerfile
+    ports:
+      - "4923:4923"
+    environment:
+      PORT: 4923
+      DB_HOST: postgres
+      DB_PORT: 5432
+      DB_NAME: stripe_app
+      DB_USER: postgres
+      DB_PASSWORD: postgres
+      STRIPE_SECRET_KEY: ${STRIPE_SECRET_KEY:-sk_test_xxx}
+      STRIPE_WEBHOOK_SECRET: ${STRIPE_WEBHOOK_SECRET:-whsec_xxx}
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  frontend:
+    build:
+      context: .
+      dockerfile: frontend/Dockerfile
+    ports:
+      - "3847:3000"
+    environment:
+      NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY: ${STRIPE_PUBLISHABLE_KEY:-pk_test_xxx}
+      NEXT_PUBLIC_CORE_API_URL: http://localhost:4917
+    depends_on:
+      - core-backend
+
+volumes:
+  pgdata:
+  redisdata:

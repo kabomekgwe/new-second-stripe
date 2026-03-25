@@ -1,0 +1,5 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 40 28" fill="none">
+  <rect width="40" height="28" rx="3" fill="#fff" stroke="#E6E6E6" stroke-width=".5"/>
+  <rect x="4" y="5" width="32" height="18" rx="2" fill="#CC0066"/>
+  <text x="20" y="16.5" text-anchor="middle" font-family="Arial,sans-serif" font-size="7" font-weight="bold" fill="#fff">iDEAL</text>
+</svg>
