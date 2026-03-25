@@ -5,7 +5,7 @@ FROM base AS shared
 WORKDIR /app/shared
 COPY shared/package.json shared/tsconfig.json ./
 COPY shared/src ./src
-RUN npm install
+RUN npm install && npm run build
 
 # Build core-backend
 FROM base AS build

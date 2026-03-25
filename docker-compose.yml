@@ -45,6 +45,11 @@ services:
       STRIPE_SECRET_KEY: ${STRIPE_SECRET_KEY:-sk_test_xxx}
       STRIPE_PUBLISHABLE_KEY: ${STRIPE_PUBLISHABLE_KEY:-pk_test_xxx}
       FRONTEND_URL: http://localhost:3847
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:4917/ || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
     depends_on:
       postgres:
         condition: service_healthy
@@ -66,6 +71,11 @@ services:
       DB_PASSWORD: postgres
       STRIPE_SECRET_KEY: ${STRIPE_SECRET_KEY:-sk_test_xxx}
       STRIPE_WEBHOOK_SECRET: ${STRIPE_WEBHOOK_SECRET:-whsec_xxx}
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:4923/ || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
     depends_on:
       postgres:
         condition: service_healthy
@@ -80,7 +90,8 @@ services:
       NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY: ${STRIPE_PUBLISHABLE_KEY:-pk_test_xxx}
       NEXT_PUBLIC_CORE_API_URL: http://localhost:4917
     depends_on:
-      - core-backend
+      core-backend:
+        condition: service_healthy
 
 volumes:
   pgdata:

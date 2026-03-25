@@ -1,4 +1,4 @@
-import { randomUUID } from 'crypto';
+import { createHash } from 'crypto';
 
 export function generateIdempotencyKey(
   operation: string,
@@ -12,7 +12,8 @@ export function generateIdempotencyKey(
 
 export function generateUniqueIdempotencyKey(
   operation: string,
-  resourceId: string,
+  ...identifiers: string[]
 ): string {
-  return `${operation}_${resourceId}_${Date.now()}_${randomUUID().slice(0, 8)}`;
+  const input = [operation, ...identifiers].join(':');
+  return `${operation}_${createHash('sha256').update(input).digest('hex').slice(0, 16)}`;
 }

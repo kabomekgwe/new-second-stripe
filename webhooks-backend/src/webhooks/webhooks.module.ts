@@ -11,6 +11,7 @@ import { WebhooksService } from './webhooks.service';
 import { SetupIntentHandler } from './handlers/setup-intent.handler';
 import { PaymentMethodHandler } from './handlers/payment-method.handler';
 import { PaymentIntentHandler } from './handlers/payment-intent.handler';
+import { InvoiceHandler } from './handlers/invoice.handler';
 
 @Module({
   imports: [
@@ -22,6 +23,7 @@ import { PaymentIntentHandler } from './handlers/payment-intent.handler';
     SetupIntentHandler,
     PaymentMethodHandler,
     PaymentIntentHandler,
+    InvoiceHandler,
   ],
 })
 export class WebhooksModule {}

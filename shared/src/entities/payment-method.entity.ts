@@ -30,10 +30,10 @@ export class PaymentMethod {
   @Column({ default: false })
   isDefault: boolean;
 
-  @Column({ nullable: true })
+  @Column({ type: 'varchar', length: 4, nullable: true })
   last4: string | null;
 
-  @Column({ nullable: true })
+  @Column({ type: 'varchar', nullable: true })
   brand: string | null;
 
   @Column({ type: 'int', nullable: true })

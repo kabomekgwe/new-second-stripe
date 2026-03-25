@@ -35,12 +35,13 @@ export function AddPaymentMethodModal({ onClose, onSuccess }: AddPaymentMethodMo
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50" role="dialog" aria-modal="true" aria-labelledby="add-pm-title">
       <div className="w-full max-w-md rounded-xl bg-white p-6 shadow-xl">
         <div className="flex items-center justify-between">
-          <h2 className="text-lg font-semibold text-gray-900">Add Payment Method</h2>
+          <h2 id="add-pm-title" className="text-lg font-semibold text-gray-900">Add Payment Method</h2>
           <button
             onClick={onClose}
+            aria-label="Close"
             className="rounded-md p-1 text-gray-400 hover:text-gray-600 transition-colors"
           >
             <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -97,8 +98,22 @@ function SetupForm({ onSuccess, onError }: { onSuccess: () => void; onError: (ms
       onError(error.message || 'Setup failed. Please try again.');
       setSubmitting(false);
     } else {
-      // Give webhook a moment to process, then refresh
-      setTimeout(onSuccess, 1500);
+      // Poll for the payment method to appear (webhook may take a moment)
+      const maxAttempts = 6;
+      for (let i = 0; i < maxAttempts; i++) {
+        await new Promise((r) => setTimeout(r, 1000));
+        try {
+          const methods = await api.get<{ id: string }[]>('/payment-methods');
+          if (methods.length > 0) {
+            onSuccess();
+            return;
+          }
+        } catch {
+          // ignore polling errors
+        }
+      }
+      // Fallback: call success anyway so UI updates
+      onSuccess();
     }
   }
 

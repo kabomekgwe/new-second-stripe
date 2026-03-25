@@ -43,7 +43,7 @@ export class PaymentsService {
       };
     }
 
-    const idempotencyKey = generateUniqueIdempotencyKey('fx_quote', userId);
+    const idempotencyKey = generateUniqueIdempotencyKey('fx_quote', userId, String(amountGbp), user.currency);
 
     const quote = await this.stripeService.createFxQuote(
       {
@@ -77,7 +77,7 @@ export class PaymentsService {
       );
     }
 
-    const idempotencyKey = generateUniqueIdempotencyKey('payment', userId);
+    const idempotencyKey = generateUniqueIdempotencyKey('payment', userId, String(dto.amountGbp), dto.paymentMethodId);
 
     const paymentIntent = await this.stripeService.createPaymentIntent(
       {

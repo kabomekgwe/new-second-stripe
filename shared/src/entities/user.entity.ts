@@ -5,6 +5,7 @@ import {
   CreateDateColumn,
   UpdateDateColumn,
   OneToMany,
+  Index,
 } from 'typeorm';
 import { Exclude } from 'class-transformer';
 import { PaymentMethod } from './payment-method.entity';
@@ -32,6 +33,7 @@ export class User {
   @Column({ length: 3 })
   currency: string;
 
+  @Index()
   @Column({ nullable: true, unique: true })
   stripeCustomerId: string | null;
 

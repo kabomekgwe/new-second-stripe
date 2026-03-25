@@ -20,6 +20,11 @@ class ApiClient {
     });
 
     if (!response.ok) {
+      if (response.status === 401 && typeof window !== 'undefined' && !path.includes('/auth/')) {
+        window.location.href = '/auth/login?expired=1';
+        return new Promise(() => {}); // never resolves — page is redirecting
+      }
+
       const error: ApiError = await response.json().catch(() => ({
         statusCode: response.status,
         message: response.statusText,

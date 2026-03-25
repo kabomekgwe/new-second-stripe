@@ -5,6 +5,7 @@ import { StripeService } from '../stripe/stripe.service';
 import { SetupIntentHandler } from './handlers/setup-intent.handler';
 import { PaymentMethodHandler } from './handlers/payment-method.handler';
 import { PaymentIntentHandler } from './handlers/payment-intent.handler';
+import { InvoiceHandler } from './handlers/invoice.handler';
 
 @Injectable()
 export class WebhooksService {
@@ -17,6 +18,7 @@ export class WebhooksService {
     private setupIntentHandler: SetupIntentHandler,
     private paymentMethodHandler: PaymentMethodHandler,
     private paymentIntentHandler: PaymentIntentHandler,
+    private invoiceHandler: InvoiceHandler,
   ) {
     this.webhookSecret =
       this.configService.getOrThrow<string>('STRIPE_WEBHOOK_SECRET');
@@ -53,6 +55,14 @@ export class WebhooksService {
           await this.paymentIntentHandler.handleFailed(event);
           break;
 
+        case STRIPE_WEBHOOK_EVENTS.INVOICE_PAID:
+          await this.invoiceHandler.handlePaid(event);
+          break;
+
+        case STRIPE_WEBHOOK_EVENTS.INVOICE_PAYMENT_FAILED:
+          await this.invoiceHandler.handlePaymentFailed(event);
+          break;
+
         default:
           this.logger.debug(`Unhandled event type: ${event.type}`);
       }
@@ -61,7 +71,8 @@ export class WebhooksService {
         `Error processing event ${event.type} (${event.id}): ${error.message}`,
         error.stack,
       );
-      // Return successfully to avoid Stripe retries on business logic errors
+      // Re-throw so Stripe receives a non-200 response and retries
+      throw error;
     }
   }
 }

@@ -11,12 +11,14 @@ export function getSessionConfig(configService: ConfigService) {
 
   return session({
     store,
-    secret: configService.get<string>('SESSION_SECRET') ?? 'dev-secret',
+    secret: configService.get('NODE_ENV') === 'production'
+      ? configService.getOrThrow<string>('SESSION_SECRET')
+      : configService.get<string>('SESSION_SECRET') ?? 'dev-secret',
     resave: false,
     saveUninitialized: false,
     cookie: {
       httpOnly: true,
-      sameSite: 'lax',
+      sameSite: configService.get('NODE_ENV') === 'production' ? 'strict' : 'lax',
       secure: configService.get('NODE_ENV') === 'production',
       maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days
     },
