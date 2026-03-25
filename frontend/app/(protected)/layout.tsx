@@ -1,10 +1,9 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect } from 'react';
 import { useRouter, usePathname } from 'next/navigation';
 import Link from 'next/link';
-import { api } from '@/lib/api-client';
-import type { UserResponse } from '@stripe-app/shared';
+import { useGetMeQuery, useLogoutMutation } from '@/lib/store/auth-api';
 
 const NAV_LINKS = [
   { href: '/', label: 'Dashboard' },
@@ -16,25 +15,24 @@ const NAV_LINKS = [
 export default function ProtectedLayout({ children }: { children: React.ReactNode }) {
   const router = useRouter();
   const pathname = usePathname();
-  const [user, setUser] = useState<UserResponse | null>(null);
-  const [loading, setLoading] = useState(true);
+  const { data: user, isLoading, isError } = useGetMeQuery();
+  const [logout] = useLogoutMutation();
 
   useEffect(() => {
-    api.get<UserResponse>('/auth/me')
-      .then(setUser)
-      .catch(() => router.push('/auth/login'))
-      .finally(() => setLoading(false));
-  }, [router]);
+    if (isError) {
+      router.push('/auth/login');
+    }
+  }, [isError, router]);
 
   async function handleLogout() {
     try {
-      await api.post('/auth/logout');
+      await logout().unwrap();
     } finally {
       router.push('/auth/login');
     }
   }
 
-  if (loading) {
+  if (isLoading) {
     return (
       <div className="flex min-h-screen items-center justify-center bg-gray-50">
         <div className="text-gray-500">Loading...</div>

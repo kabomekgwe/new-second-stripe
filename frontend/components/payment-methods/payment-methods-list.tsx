@@ -1,41 +1,28 @@
 'use client';
 
-import { useEffect, useState, useCallback } from 'react';
-import { api } from '@/lib/api-client';
-import type { PaymentMethodResponse, AvailablePaymentMethodType } from '@stripe-app/shared';
+import { useState } from 'react';
+import {
+  useGetPaymentMethodsQuery,
+  useGetAvailableMethodTypesQuery,
+  useSetDefaultMethodMutation,
+  useDeleteMethodMutation,
+} from '@/lib/store/payment-methods-api';
 import { PaymentMethodCard } from './payment-method-card';
 import { AddPaymentMethodModal } from './add-payment-method-modal';
 
 export function PaymentMethodsList() {
-  const [savedMethods, setSavedMethods] = useState<PaymentMethodResponse[]>([]);
-  const [availableTypes, setAvailableTypes] = useState<AvailablePaymentMethodType[]>([]);
-  const [loading, setLoading] = useState(true);
+  const { data: savedMethods, isLoading: methodsLoading, isError: methodsError } = useGetPaymentMethodsQuery();
+  const { data: availableTypes, isLoading: typesLoading } = useGetAvailableMethodTypesQuery();
+  const [setDefaultMethod] = useSetDefaultMethodMutation();
+  const [deleteMethod] = useDeleteMethodMutation();
   const [showAddModal, setShowAddModal] = useState(false);
   const [error, setError] = useState('');
 
-  const fetchData = useCallback(async () => {
-    try {
-      const [methods, types] = await Promise.all([
-        api.get<PaymentMethodResponse[]>('/payment-methods'),
-        api.get<AvailablePaymentMethodType[]>('/payment-methods/available'),
-      ]);
-      setSavedMethods(methods);
-      setAvailableTypes(types);
-    } catch {
-      setError('Failed to load payment methods');
-    } finally {
-      setLoading(false);
-    }
-  }, []);
-
-  useEffect(() => {
-    fetchData();
-  }, [fetchData]);
+  const loading = methodsLoading || typesLoading;
 
   async function handleSetDefault(id: string) {
     try {
-      await api.post(`/payment-methods/${id}/default`);
-      await fetchData();
+      await setDefaultMethod(id).unwrap();
     } catch {
       setError('Failed to set default payment method');
     }
@@ -43,8 +30,7 @@ export function PaymentMethodsList() {
 
   async function handleRemove(id: string) {
     try {
-      await api.delete(`/payment-methods/${id}`);
-      await fetchData();
+      await deleteMethod(id).unwrap();
     } catch {
       setError('Failed to remove payment method');
     }
@@ -52,7 +38,6 @@ export function PaymentMethodsList() {
 
   function handleAddSuccess() {
     setShowAddModal(false);
-    fetchData();
   }
 
   if (loading) {
@@ -61,8 +46,10 @@ export function PaymentMethodsList() {
 
   return (
     <div className="space-y-8">
-      {error && (
-        <div className="rounded-md bg-red-50 px-4 py-3 text-sm text-red-700">{error}</div>
+      {(error || methodsError) && (
+        <div className="rounded-md bg-red-50 px-4 py-3 text-sm text-red-700">
+          {error || 'Failed to load payment methods'}
+        </div>
       )}
 
       {/* Saved Payment Methods */}
@@ -77,7 +64,7 @@ export function PaymentMethodsList() {
           </button>
         </div>
 
-        {savedMethods.length === 0 ? (
+        {!savedMethods || savedMethods.length === 0 ? (
           <p className="mt-4 text-sm text-gray-500">
             No payment methods saved yet. Add one to get started.
           </p>
@@ -102,7 +89,7 @@ export function PaymentMethodsList() {
           Payment methods enabled on this account.
         </p>
         <div className="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
-          {availableTypes.map((pm) => (
+          {(availableTypes || []).map((pm) => (
             <div
               key={pm.type}
               className="flex items-center gap-3 rounded-lg border border-gray-200 bg-white px-4 py-3"

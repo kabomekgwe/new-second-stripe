@@ -34,10 +34,10 @@ export class User {
   currency: string;
 
   @Index()
-  @Column({ nullable: true, unique: true })
+  @Column({ type: 'varchar', nullable: true, unique: true })
   stripeCustomerId: string | null;
 
-  @Column({ nullable: true })
+  @Column({ type: 'varchar', nullable: true })
   defaultPaymentMethodId: string | null;
 
   @Column({ type: 'decimal', precision: 12, scale: 0, nullable: true })

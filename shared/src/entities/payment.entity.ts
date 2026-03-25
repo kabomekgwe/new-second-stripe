@@ -31,16 +31,16 @@ export class Payment {
   @Column({ type: 'int', nullable: true })
   amountUserCurrency: number | null;
 
-  @Column({ length: 3, nullable: true })
+  @Column({ type: 'varchar', length: 3, nullable: true })
   userCurrency: string | null;
 
-  @Column({ nullable: true })
+  @Column({ type: 'varchar', nullable: true })
   fxQuoteId: string | null;
 
   @Column({ type: 'enum', enum: PaymentStatus, default: PaymentStatus.PENDING })
   status: PaymentStatus;
 
-  @Column({ nullable: true })
+  @Column({ type: 'varchar', nullable: true })
   paymentMethodId: string | null;
 
   @Column({ unique: true })

@@ -1,8 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
-import { api } from '@/lib/api-client';
-import type { UsageChargeResponse } from '@stripe-app/shared';
+import { useGetBillingQuery } from '@/lib/store/billing-api';
 
 const STATUS_STYLES: Record<string, string> = {
   paid: 'bg-green-100 text-green-700',
@@ -27,26 +25,17 @@ function formatStatus(status: string): string {
 }
 
 export function BillingHistory() {
-  const [charges, setCharges] = useState<UsageChargeResponse[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState('');
+  const { data: charges, isLoading, isError } = useGetBillingQuery();
 
-  useEffect(() => {
-    api.get<UsageChargeResponse[]>('/billing')
-      .then(setCharges)
-      .catch(() => setError('Failed to load billing history'))
-      .finally(() => setLoading(false));
-  }, []);
-
-  if (loading) {
+  if (isLoading) {
     return <div className="text-gray-500">Loading billing history...</div>;
   }
 
-  if (error) {
-    return <div className="rounded-md bg-red-50 px-4 py-3 text-sm text-red-700">{error}</div>;
+  if (isError) {
+    return <div className="rounded-md bg-red-50 px-4 py-3 text-sm text-red-700">Failed to load billing history</div>;
   }
 
-  if (charges.length === 0) {
+  if (!charges || charges.length === 0) {
     return (
       <div className="rounded-lg border border-gray-200 bg-white px-6 py-12 text-center">
         <p className="text-sm text-gray-500">No billing charges yet.</p>

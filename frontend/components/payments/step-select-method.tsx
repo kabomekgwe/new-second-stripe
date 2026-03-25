@@ -1,7 +1,7 @@
 'use client';
 
-import { useEffect, useState } from 'react';
-import { api } from '@/lib/api-client';
+import { useEffect } from 'react';
+import { useGetPaymentMethodsQuery } from '@/lib/store/payment-methods-api';
 import type { PaymentMethodResponse } from '@stripe-app/shared';
 import { PaymentMethodIcon } from '@/components/payment-methods/payment-method-icon';
 
@@ -21,34 +21,26 @@ function methodLabel(method: PaymentMethodResponse): string {
 }
 
 export function StepSelectMethod({ selectedId, onSelect, onBack, onNext }: StepSelectMethodProps) {
-  const [methods, setMethods] = useState<PaymentMethodResponse[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState('');
+  const { data: methods, isLoading, isError } = useGetPaymentMethodsQuery();
 
   useEffect(() => {
-    api.get<PaymentMethodResponse[]>('/payment-methods')
-      .then((data) => {
-        setMethods(data);
-        if (!selectedId) {
-          const defaultMethod = data.find((m) => m.isDefault);
-          if (defaultMethod) onSelect(defaultMethod.id);
-          else if (data.length > 0) onSelect(data[0].id);
-        }
-      })
-      .catch(() => setError('Failed to load payment methods'))
-      .finally(() => setLoading(false));
+    if (methods && !selectedId) {
+      const defaultMethod = methods.find((m) => m.isDefault);
+      if (defaultMethod) onSelect(defaultMethod.id);
+      else if (methods.length > 0) onSelect(methods[0].id);
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [methods]);
 
-  if (loading) {
+  if (isLoading) {
     return <div className="text-gray-500">Loading payment methods...</div>;
   }
 
-  if (error) {
-    return <div className="rounded-md bg-red-50 px-4 py-3 text-sm text-red-700">{error}</div>;
+  if (isError) {
+    return <div className="rounded-md bg-red-50 px-4 py-3 text-sm text-red-700">Failed to load payment methods</div>;
   }
 
-  if (methods.length === 0) {
+  if (!methods || methods.length === 0) {
     return (
       <div className="space-y-4">
         <p className="text-sm text-gray-500">

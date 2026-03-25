@@ -25,6 +25,7 @@ WORKDIR /app/webhooks-backend
 COPY --from=build /app/webhooks-backend/package.json ./
 RUN npm install --omit=dev
 COPY --from=build /app/webhooks-backend/dist ./dist
+RUN apk add --no-cache curl
 
 EXPOSE 4923
 CMD ["node", "dist/main.js"]

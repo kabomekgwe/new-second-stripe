@@ -3,8 +3,8 @@
 import { useState } from 'react';
 import { Elements, PaymentElement, useStripe, useElements } from '@stripe/react-stripe-js';
 import { stripePromise } from '@/lib/stripe';
-import { api } from '@/lib/api-client';
-import type { SetupIntentResponse } from '@stripe-app/shared';
+import { useCreateSetupIntentMutation } from '@/lib/store/payment-methods-api';
+import { paymentMethodsApi } from '@/lib/store/payment-methods-api';
 
 interface AddPaymentMethodModalProps {
   onClose: () => void;
@@ -15,13 +15,14 @@ export function AddPaymentMethodModal({ onClose, onSuccess }: AddPaymentMethodMo
   const [clientSecret, setClientSecret] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+  const [createSetupIntent] = useCreateSetupIntentMutation();
 
   async function handleInit() {
     setLoading(true);
     setError('');
     try {
-      const { clientSecret } = await api.post<SetupIntentResponse>('/payment-methods/setup-intent');
-      setClientSecret(clientSecret);
+      const result = await createSetupIntent().unwrap();
+      setClientSecret(result.clientSecret);
     } catch {
       setError('Failed to initialize. Please try again.');
     } finally {
@@ -78,6 +79,7 @@ function SetupForm({ onSuccess, onError }: { onSuccess: () => void; onError: (ms
   const stripe = useStripe();
   const elements = useElements();
   const [submitting, setSubmitting] = useState(false);
+  const [lazyGetPaymentMethods] = paymentMethodsApi.endpoints.getPaymentMethods.useLazyQuery();
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -103,8 +105,8 @@ function SetupForm({ onSuccess, onError }: { onSuccess: () => void; onError: (ms
       for (let i = 0; i < maxAttempts; i++) {
         await new Promise((r) => setTimeout(r, 1000));
         try {
-          const methods = await api.get<{ id: string }[]>('/payment-methods');
-          if (methods.length > 0) {
+          const result = await lazyGetPaymentMethods().unwrap();
+          if (result.length > 0) {
             onSuccess();
             return;
           }

@@ -3,7 +3,7 @@ import { ValidationPipe, ClassSerializerInterceptor } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { AppModule } from './app.module';
 import { getSessionConfig } from './config/session.config';
-import passport from 'passport';
+import * as passport from 'passport';
 import { StripeExceptionFilter } from './common/filters/stripe-exception.filter';
 import { GlobalExceptionFilter } from './common/filters/http-exception.filter';
 import { LoggingInterceptor } from './common/interceptors/logging.interceptor';

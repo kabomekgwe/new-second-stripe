@@ -1,8 +1,8 @@
 'use client';
 
 import { useState, useEffect, useRef } from 'react';
-import { api } from '@/lib/api-client';
-import type { FxQuoteResponse, FxQuoteRequest } from '@stripe-app/shared';
+import { useFxQuoteMutation } from '@/lib/store/payments-api';
+import type { FxQuoteResponse } from '@stripe-app/shared';
 
 interface StepAmountProps {
   amountGbp: number;
@@ -20,6 +20,7 @@ export function StepAmount({ amountGbp, fxQuote, onUpdate, onNext }: StepAmountP
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const [fxQuoteTrigger] = useFxQuoteMutation();
 
   const penceValue = Math.round(parseFloat(inputValue || '0') * 100);
   const isValid = penceValue > 0 && !isNaN(penceValue);
@@ -36,9 +37,7 @@ export function StepAmount({ amountGbp, fxQuote, onUpdate, onNext }: StepAmountP
       setLoading(true);
       setError('');
       try {
-        const quote = await api.post<FxQuoteResponse>('/payments/fx-quote', {
-          amountGbp: penceValue,
-        } satisfies FxQuoteRequest);
+        const quote = await fxQuoteTrigger({ amountGbp: penceValue }).unwrap();
         onUpdate(penceValue, quote);
       } catch {
         setError('Failed to get exchange rate');

@@ -25,6 +25,7 @@ WORKDIR /app/core-backend
 COPY --from=build /app/core-backend/package.json ./
 RUN npm install --omit=dev
 COPY --from=build /app/core-backend/dist ./dist
+RUN apk add --no-cache curl
 
 EXPOSE 4917
 CMD ["node", "dist/main.js"]

@@ -22,7 +22,7 @@ export class UsageCharge {
   @JoinColumn({ name: 'userId' })
   user: User;
 
-  @Column({ nullable: true })
+  @Column({ type: 'varchar', nullable: true })
   stripePaymentIntentId: string | null;
 
   @Column({ type: 'int' })

@@ -1,8 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
-import { api } from '@/lib/api-client';
-import type { PaymentResponse } from '@stripe-app/shared';
+import { useGetPaymentsQuery } from '@/lib/store/payments-api';
 
 const STATUS_STYLES: Record<string, string> = {
   succeeded: 'bg-green-100 text-green-700',
@@ -21,26 +19,17 @@ function formatStatus(status: string): string {
 }
 
 export function PaymentHistory() {
-  const [payments, setPayments] = useState<PaymentResponse[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState('');
+  const { data: payments, isLoading, isError } = useGetPaymentsQuery();
 
-  useEffect(() => {
-    api.get<PaymentResponse[]>('/payments')
-      .then(setPayments)
-      .catch(() => setError('Failed to load payments'))
-      .finally(() => setLoading(false));
-  }, []);
-
-  if (loading) {
+  if (isLoading) {
     return <div className="text-gray-500">Loading payments...</div>;
   }
 
-  if (error) {
-    return <div className="rounded-md bg-red-50 px-4 py-3 text-sm text-red-700">{error}</div>;
+  if (isError) {
+    return <div className="rounded-md bg-red-50 px-4 py-3 text-sm text-red-700">Failed to load payments</div>;
   }
 
-  if (payments.length === 0) {
+  if (!payments || payments.length === 0) {
     return (
       <div className="rounded-lg border border-gray-200 bg-white px-6 py-12 text-center">
         <p className="text-sm text-gray-500">No payments yet. Make your first payment to get started.</p>

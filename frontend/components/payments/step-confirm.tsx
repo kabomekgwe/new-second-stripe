@@ -3,8 +3,8 @@
 import { useState, useEffect } from 'react';
 import { Elements, PaymentElement, useStripe, useElements } from '@stripe/react-stripe-js';
 import { stripePromise } from '@/lib/stripe';
-import { api } from '@/lib/api-client';
-import type { FxQuoteResponse, CreatePaymentRequest, CreatePaymentResponse } from '@stripe-app/shared';
+import { useCreatePaymentIntentMutation } from '@/lib/store/payments-api';
+import type { FxQuoteResponse, CreatePaymentRequest } from '@stripe-app/shared';
 
 interface StepConfirmProps {
   amountGbp: number;
@@ -97,6 +97,7 @@ function ConfirmForm({
 export function StepConfirm({ amountGbp, fxQuote, paymentMethodId, onSuccess, onError, onBack }: StepConfirmProps) {
   const [clientSecret, setClientSecret] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
+  const [createPaymentIntent] = useCreatePaymentIntentMutation();
 
   useEffect(() => {
     async function createIntent() {
@@ -106,8 +107,8 @@ export function StepConfirm({ amountGbp, fxQuote, paymentMethodId, onSuccess, on
           paymentMethodId,
           ...(fxQuote?.quoteId ? { fxQuoteId: fxQuote.quoteId } : {}),
         };
-        const { clientSecret } = await api.post<CreatePaymentResponse>('/payments/create-intent', body);
-        setClientSecret(clientSecret);
+        const result = await createPaymentIntent(body).unwrap();
+        setClientSecret(result.clientSecret);
       } catch {
         onError('Failed to create payment. Please try again.');
       } finally {

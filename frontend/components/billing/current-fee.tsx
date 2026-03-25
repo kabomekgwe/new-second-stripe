@@ -1,35 +1,20 @@
 'use client';
 
-import { useEffect, useState } from 'react';
-import { api } from '@/lib/api-client';
-
-interface CurrentFeeResponse {
-  monthlyManagementFee: number | null;
-  accountValue: number | null;
-}
+import { useGetCurrentFeeQuery } from '@/lib/store/billing-api';
 
 function formatPence(pence: number): string {
   return (pence / 100).toFixed(2);
 }
 
 export function CurrentFee() {
-  const [data, setData] = useState<CurrentFeeResponse | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState('');
+  const { data, isLoading, isError } = useGetCurrentFeeQuery();
 
-  useEffect(() => {
-    api.get<CurrentFeeResponse>('/billing/current-fee')
-      .then(setData)
-      .catch(() => setError('Failed to load current fee'))
-      .finally(() => setLoading(false));
-  }, []);
-
-  if (loading) {
+  if (isLoading) {
     return <div className="text-gray-500">Loading current fee...</div>;
   }
 
-  if (error) {
-    return <div className="rounded-md bg-red-50 px-4 py-3 text-sm text-red-700">{error}</div>;
+  if (isError) {
+    return <div className="rounded-md bg-red-50 px-4 py-3 text-sm text-red-700">Failed to load current fee</div>;
   }
 
   return (
