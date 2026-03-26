@@ -18,7 +18,11 @@ export class BillingService {
     private stripeService: StripeService,
   ) {}
 
-  async chargeUser(user: User): Promise<UsageCharge> {
+  async chargeUser(
+    user: User,
+    amount: number,
+    description?: string,
+  ): Promise<UsageCharge> {
     const now = new Date();
     const billingPeriodStart = new Date(now.getFullYear(), now.getMonth(), 1);
     const billingPeriodEnd = new Date(
@@ -40,15 +44,13 @@ export class BillingService {
       return existing;
     }
 
-    const stripeIdempotencyKey = generateIdempotencyKey(
-      'mgmt_fee',
-      user.id,
-      periodKey,
-    );
+    const lineItemDescription =
+      description ?? `Management fee – ${periodKey}`;
 
+    // Charge the default payment method directly via PaymentIntent
     const paymentIntent = await this.stripeService.createPaymentIntent(
       {
-        amount: user.monthlyManagementFee!,
+        amount,
         customer: user.stripeCustomerId!,
         payment_method: user.defaultPaymentMethodId!,
         off_session: true,
@@ -58,14 +60,17 @@ export class BillingService {
           type: 'management_fee',
           period: periodKey,
         },
+        description: lineItemDescription,
       },
-      stripeIdempotencyKey,
+      generateIdempotencyKey('pi_mgmt', user.id, periodKey),
     );
 
+    // Track locally
     const charge = this.usageChargeRepo.create({
       userId: user.id,
       stripePaymentIntentId: paymentIntent.id,
-      amountGbp: user.monthlyManagementFee!,
+      amountGbp: amount,
+      description: lineItemDescription,
       billingPeriodStart,
       billingPeriodEnd,
       status: ChargeStatus.PROCESSING,
@@ -100,7 +105,7 @@ export class BillingService {
 
     for (const user of users) {
       try {
-        const charge = await this.chargeUser(user);
+        const charge = await this.chargeUser(user, user.monthlyManagementFee!);
         if (charge.status === ChargeStatus.PROCESSING) {
           results.succeeded++;
         } else {

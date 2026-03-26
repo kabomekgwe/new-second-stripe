@@ -11,11 +11,13 @@ import { WebhooksService } from './webhooks.service';
 import { SetupIntentHandler } from './handlers/setup-intent.handler';
 import { PaymentMethodHandler } from './handlers/payment-method.handler';
 import { PaymentIntentHandler } from './handlers/payment-intent.handler';
-import { InvoiceHandler } from './handlers/invoice.handler';
+import { CheckoutSessionHandler } from './handlers/checkout-session.handler';
+import { EmailModule } from '../email/email.module';
 
 @Module({
   imports: [
     TypeOrmModule.forFeature([User, PaymentMethod, Payment, UsageCharge]),
+    EmailModule,
   ],
   controllers: [WebhooksController],
   providers: [
@@ -23,7 +25,7 @@ import { InvoiceHandler } from './handlers/invoice.handler';
     SetupIntentHandler,
     PaymentMethodHandler,
     PaymentIntentHandler,
-    InvoiceHandler,
+    CheckoutSessionHandler,
   ],
 })
 export class WebhooksModule {}

@@ -8,6 +8,7 @@ import {
   PaymentStatus,
   ChargeStatus,
 } from '@stripe-app/shared';
+import { EmailService } from '../../email/email.service';
 
 @Injectable()
 export class PaymentIntentHandler {
@@ -18,6 +19,7 @@ export class PaymentIntentHandler {
     private paymentRepository: Repository<Payment>,
     @InjectRepository(UsageCharge)
     private usageChargeRepository: Repository<UsageCharge>,
+    private emailService: EmailService,
   ) {}
 
   async handleSucceeded(event: Stripe.Event): Promise<void> {
@@ -25,6 +27,7 @@ export class PaymentIntentHandler {
 
     if (paymentIntent.metadata?.type === 'management_fee') {
       await this.updateUsageCharge(paymentIntent, ChargeStatus.PAID);
+      await this.sendInvoiceEmail(paymentIntent);
     }
 
     await this.updatePayment(paymentIntent, PaymentStatus.SUCCEEDED);
@@ -59,6 +62,32 @@ export class PaymentIntentHandler {
     this.logger.log(
       `Updated payment ${payment.id} to status ${status}`,
     );
+  }
+
+  private async sendInvoiceEmail(
+    paymentIntent: Stripe.PaymentIntent,
+  ): Promise<void> {
+    const charge = await this.usageChargeRepository.findOne({
+      where: { stripePaymentIntentId: paymentIntent.id },
+      relations: ['user'],
+    });
+
+    if (!charge?.user) {
+      this.logger.warn(
+        `Cannot send invoice email: no charge or user found for PI ${paymentIntent.id}`,
+      );
+      return;
+    }
+
+    await this.emailService.sendInvoiceEmail({
+      to: charge.user.email,
+      userName: charge.user.name,
+      amountPence: charge.amountGbp,
+      description: charge.description ?? 'Management fee',
+      periodStart: charge.billingPeriodStart,
+      periodEnd: charge.billingPeriodEnd,
+      chargeId: charge.id,
+    });
   }
 
   private async updateUsageCharge(

@@ -50,6 +50,6 @@ export const STRIPE_WEBHOOK_EVENTS = {
   SETUP_INTENT_SUCCEEDED: 'setup_intent.succeeded',
   PAYMENT_METHOD_ATTACHED: 'payment_method.attached',
   PAYMENT_METHOD_DETACHED: 'payment_method.detached',
-  INVOICE_PAID: 'invoice.paid',
-  INVOICE_PAYMENT_FAILED: 'invoice.payment_failed',
+  CHECKOUT_SESSION_COMPLETED: 'checkout.session.completed',
+  CHECKOUT_SESSION_EXPIRED: 'checkout.session.expired',
 } as const;

@@ -70,6 +70,16 @@ export interface CreatePaymentResponse {
   paymentIntentId: string;
 }
 
+// Checkout Sessions (Adaptive Pricing)
+export interface CreateCheckoutSessionRequest {
+  amountGbp: number; // in pence
+}
+
+export interface CreateCheckoutSessionResponse {
+  clientSecret: string;
+  sessionId: string;
+}
+
 export interface PaymentResponse {
   id: string;
   stripePaymentIntentId: string;
@@ -84,9 +94,11 @@ export interface PaymentResponse {
 export interface UsageChargeResponse {
   id: string;
   amountGbp: number;
+  description: string | null;
   billingPeriodStart: string;
   billingPeriodEnd: string;
   status: string;
+  stripePaymentIntentId: string | null;
   createdAt: string;
 }
 

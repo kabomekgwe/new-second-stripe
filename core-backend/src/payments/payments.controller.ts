@@ -13,6 +13,7 @@ import { AuthenticatedGuard } from '../auth/guards/authenticated.guard';
 import { PaymentsService } from './payments.service';
 import { FxQuoteDto } from './dto/fx-quote.dto';
 import { CreatePaymentDto } from './dto/create-payment.dto';
+import { CreateCheckoutSessionDto } from './dto/create-checkout-session.dto';
 
 @Controller('payments')
 @UseGuards(AuthenticatedGuard)
@@ -30,6 +31,14 @@ export class PaymentsController {
   @Post('create-intent')
   createPaymentIntent(@Req() req: Request, @Body() dto: CreatePaymentDto) {
     return this.paymentsService.createPaymentIntent(
+      (req.user as User).id,
+      dto,
+    );
+  }
+
+  @Post('create-checkout-session')
+  createCheckoutSession(@Req() req: Request, @Body() dto: CreateCheckoutSessionDto) {
+    return this.paymentsService.createCheckoutSession(
       (req.user as User).id,
       dto,
     );

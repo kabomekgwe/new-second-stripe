@@ -23,10 +23,16 @@ export class UsageCharge {
   user: User;
 
   @Column({ type: 'varchar', nullable: true })
+  stripeInvoiceId: string | null;
+
+  @Column({ type: 'varchar', nullable: true })
   stripePaymentIntentId: string | null;
 
   @Column({ type: 'int' })
   amountGbp: number;
+
+  @Column({ type: 'varchar', nullable: true })
+  description: string | null;
 
   @Column({ type: 'date' })
   billingPeriodStart: Date;

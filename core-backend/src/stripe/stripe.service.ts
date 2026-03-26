@@ -14,7 +14,7 @@ export class StripeService {
   }
 
   async createCustomer(
-    params: { email: string; name: string; metadata?: Stripe.MetadataParam },
+    params: any,
     idempotencyKey: string,
   ): Promise<Stripe.Customer> {
     return this.stripe.customers.create(params, {
@@ -25,20 +25,15 @@ export class StripeService {
   async createSetupIntent(
     customerId: string,
     idempotencyKey: string,
-    paymentMethodTypes?: string[],
   ): Promise<Stripe.SetupIntent> {
-    const params: Stripe.SetupIntentCreateParams = {
-      customer: customerId,
-      usage: 'off_session',
-    };
-
-    // Only specify payment_method_types if provided
-    // This ensures the Setup Intent allows the same payment methods shown as "available"
-    if (paymentMethodTypes && paymentMethodTypes.length > 0) {
-      params.payment_method_types = paymentMethodTypes;
-    }
-
-    return this.stripe.setupIntents.create(params, { idempotencyKey });
+    return this.stripe.setupIntents.create(
+      {
+        customer: customerId,
+        usage: 'off_session',
+        automatic_payment_methods: { enabled: true },
+      },
+      { idempotencyKey },
+    );
   }
 
   async createPaymentIntent(
@@ -73,6 +68,13 @@ export class StripeService {
       },
       { idempotencyKey },
     );
+  }
+
+  async createCheckoutSession(
+    params: Stripe.Checkout.SessionCreateParams,
+    idempotencyKey: string,
+  ): Promise<Stripe.Checkout.Session> {
+    return this.stripe.checkout.sessions.create(params, { idempotencyKey });
   }
 
   async listPaymentMethods(

@@ -1,8 +1,26 @@
-import { Controller, Get, Req, UseGuards } from '@nestjs/common';
+import {
+  Controller,
+  Get,
+  Post,
+  Body,
+  Req,
+  UseGuards,
+} from '@nestjs/common';
+import { IsInt, Min, IsOptional, IsString } from 'class-validator';
 import { Request } from 'express';
 import { User } from '@stripe-app/shared';
 import { AuthenticatedGuard } from '../auth/guards/authenticated.guard';
 import { BillingService } from './billing.service';
+
+class ChargeUserDto {
+  @IsInt()
+  @Min(1)
+  amount: number; // in smallest currency unit (pence)
+
+  @IsOptional()
+  @IsString()
+  description?: string;
+}
 
 @Controller('billing')
 @UseGuards(AuthenticatedGuard)
@@ -21,5 +39,14 @@ export class BillingController {
       monthlyManagementFee: user.monthlyManagementFee,
       accountValue: user.accountValue,
     };
+  }
+
+  @Post('charge')
+  chargeCurrentUser(
+    @Req() req: Request,
+    @Body() dto: ChargeUserDto,
+  ) {
+    const user = req.user as User;
+    return this.billingService.chargeUser(user, dto.amount, dto.description);
   }
 }

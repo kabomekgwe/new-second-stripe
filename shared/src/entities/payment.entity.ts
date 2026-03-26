@@ -22,8 +22,11 @@ export class Payment {
   @JoinColumn({ name: 'userId' })
   user: User;
 
-  @Column({ unique: true })
-  stripePaymentIntentId: string;
+  @Column({ type: 'varchar', unique: true, nullable: true })
+  stripePaymentIntentId: string | null;
+
+  @Column({ type: 'varchar', unique: true, nullable: true })
+  stripeCheckoutSessionId: string | null;
 
   @Column({ type: 'int' })
   amountGbp: number;

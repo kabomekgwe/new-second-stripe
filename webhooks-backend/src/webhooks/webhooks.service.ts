@@ -5,7 +5,7 @@ import { StripeService } from '../stripe/stripe.service';
 import { SetupIntentHandler } from './handlers/setup-intent.handler';
 import { PaymentMethodHandler } from './handlers/payment-method.handler';
 import { PaymentIntentHandler } from './handlers/payment-intent.handler';
-import { InvoiceHandler } from './handlers/invoice.handler';
+import { CheckoutSessionHandler } from './handlers/checkout-session.handler';
 
 @Injectable()
 export class WebhooksService {
@@ -18,7 +18,7 @@ export class WebhooksService {
     private setupIntentHandler: SetupIntentHandler,
     private paymentMethodHandler: PaymentMethodHandler,
     private paymentIntentHandler: PaymentIntentHandler,
-    private invoiceHandler: InvoiceHandler,
+    private checkoutSessionHandler: CheckoutSessionHandler,
   ) {
     this.webhookSecret =
       this.configService.getOrThrow<string>('STRIPE_WEBHOOK_SECRET');
@@ -55,12 +55,12 @@ export class WebhooksService {
           await this.paymentIntentHandler.handleFailed(event);
           break;
 
-        case STRIPE_WEBHOOK_EVENTS.INVOICE_PAID:
-          await this.invoiceHandler.handlePaid(event);
+        case STRIPE_WEBHOOK_EVENTS.CHECKOUT_SESSION_COMPLETED:
+          await this.checkoutSessionHandler.handleCompleted(event);
           break;
 
-        case STRIPE_WEBHOOK_EVENTS.INVOICE_PAYMENT_FAILED:
-          await this.invoiceHandler.handlePaymentFailed(event);
+        case STRIPE_WEBHOOK_EVENTS.CHECKOUT_SESSION_EXPIRED:
+          await this.checkoutSessionHandler.handleExpired(event);
           break;
 
         default:

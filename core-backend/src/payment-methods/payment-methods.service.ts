@@ -97,31 +97,9 @@ export class PaymentMethodsService {
       `${Date.now()}_${Math.random().toString(36).slice(2, 10)}`,
     );
 
-    // Get available payment method types to ensure the Setup Intent
-    // allows the same payment methods shown as "available"
-    const availableTypes = await this.getAvailablePaymentMethodTypes();
-
-    // Filter out payment method types that are NOT compatible with Setup Intents
-    // BNPL (Buy Now Pay Later) methods and some region-specific methods only work
-    // with Payment Intents, not Setup Intents for saving payment methods
-    const setupIntentCompatibleTypes = [
-      'card',
-      'sepa_debit',
-      'us_bank_account',
-      'bacs_debit',
-      'au_becs_debit',
-      'cashapp',
-      'link',
-    ];
-
-    const paymentMethodTypes = availableTypes
-      .map((t) => t.type)
-      .filter((type) => setupIntentCompatibleTypes.includes(type));
-
     const setupIntent = await this.stripeService.createSetupIntent(
       user?.stripeCustomerId!,
       idempotencyKey,
-      paymentMethodTypes,
     );
 
     return { clientSecret: setupIntent.client_secret! };

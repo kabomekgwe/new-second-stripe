@@ -3,6 +3,7 @@ import {
   NotFoundException,
   BadRequestException,
 } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import {
@@ -11,20 +12,27 @@ import {
   PaymentStatus,
   FxQuoteResponse,
   CreatePaymentResponse,
+  CreateCheckoutSessionResponse,
 } from '@stripe-app/shared';
 import { StripeService } from '../stripe/stripe.service';
 import { generateUniqueIdempotencyKey } from '../common/utils/idempotency';
 import { CreatePaymentDto } from './dto/create-payment.dto';
+import { CreateCheckoutSessionDto } from './dto/create-checkout-session.dto';
 
 @Injectable()
 export class PaymentsService {
+  private readonly frontendUrl: string;
+
   constructor(
     @InjectRepository(Payment)
     private paymentRepo: Repository<Payment>,
     @InjectRepository(User)
     private userRepo: Repository<User>,
     private stripeService: StripeService,
-  ) {}
+    private configService: ConfigService,
+  ) {
+    this.frontendUrl = this.configService.get<string>('FRONTEND_URL', 'http://localhost:3847');
+  }
 
   async getFxQuote(
     userId: string,
@@ -88,6 +96,7 @@ export class PaymentsService {
           enabled: true,
           allow_redirects: 'never',
         },
+        usage: 'off_session',
         metadata: { userId, type: 'user_payment' },
         ...(dto.fxQuoteId ? { fx_quote: dto.fxQuoteId } : {}),
       } as any,
@@ -109,6 +118,60 @@ export class PaymentsService {
     return {
       clientSecret: paymentIntent.client_secret!,
       paymentIntentId: paymentIntent.id,
+    };
+  }
+
+  async createCheckoutSession(
+    userId: string,
+    dto: CreateCheckoutSessionDto,
+  ): Promise<CreateCheckoutSessionResponse> {
+    const user = await this.findUserOrFail(userId);
+
+    if (!user.stripeCustomerId) {
+      throw new BadRequestException(
+        'User does not have a Stripe customer account',
+      );
+    }
+
+    const idempotencyKey = generateUniqueIdempotencyKey('checkout', userId, String(dto.amountGbp));
+
+    const session = await this.stripeService.createCheckoutSession(
+      {
+        mode: 'payment',
+        ui_mode: 'embedded',
+        customer: user.stripeCustomerId,
+        line_items: [
+          {
+            price_data: {
+              currency: 'gbp',
+              unit_amount: dto.amountGbp,
+              product_data: {
+                name: 'Payment',
+              },
+            },
+            quantity: 1,
+          },
+        ],
+        adaptive_pricing: { enabled: true },
+        return_url: `${this.frontendUrl}/payments?session_id={CHECKOUT_SESSION_ID}`,
+        metadata: { userId, type: 'user_payment' },
+      },
+      idempotencyKey,
+    );
+
+    await this.paymentRepo.save(
+      this.paymentRepo.create({
+        userId,
+        stripeCheckoutSessionId: session.id,
+        amountGbp: dto.amountGbp,
+        status: PaymentStatus.PENDING,
+        idempotencyKey,
+      }),
+    );
+
+    return {
+      clientSecret: session.client_secret!,
+      sessionId: session.id,
     };
   }
 

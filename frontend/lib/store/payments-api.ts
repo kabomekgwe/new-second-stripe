@@ -5,6 +5,8 @@ import type {
   FxQuoteResponse,
   CreatePaymentRequest,
   CreatePaymentResponse,
+  CreateCheckoutSessionRequest,
+  CreateCheckoutSessionResponse,
 } from '@stripe-app/shared';
 
 export const paymentsApi = apiSlice.injectEndpoints({
@@ -20,7 +22,16 @@ export const paymentsApi = apiSlice.injectEndpoints({
       query: (body) => ({ url: '/payments/create-intent', method: 'POST', body }),
       invalidatesTags: ['Payments'],
     }),
+    createCheckoutSession: builder.mutation<CreateCheckoutSessionResponse, CreateCheckoutSessionRequest>({
+      query: (body) => ({ url: '/payments/create-checkout-session', method: 'POST', body }),
+      invalidatesTags: ['Payments'],
+    }),
   }),
 });
 
-export const { useGetPaymentsQuery, useFxQuoteMutation, useCreatePaymentIntentMutation } = paymentsApi;
+export const {
+  useGetPaymentsQuery,
+  useFxQuoteMutation,
+  useCreatePaymentIntentMutation,
+  useCreateCheckoutSessionMutation,
+} = paymentsApi;
