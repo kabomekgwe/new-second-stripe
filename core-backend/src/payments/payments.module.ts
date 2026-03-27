@@ -1,13 +1,12 @@
 import { Module } from '@nestjs/common';
-import { TypeOrmModule } from '@nestjs/typeorm';
-import { Payment, User } from '@stripe-app/shared';
 import { PaymentsController } from './payments.controller';
 import { PaymentsService } from './payments.service';
+import { PaymentsSqlService } from './payments.sql.service';
+import { UsersSqlService } from '../users/users.sql.service';
 
 @Module({
-  imports: [TypeOrmModule.forFeature([Payment, User])],
   controllers: [PaymentsController],
-  providers: [PaymentsService],
+  providers: [PaymentsService, PaymentsSqlService, UsersSqlService],
   exports: [PaymentsService],
 })
 export class PaymentsModule {}

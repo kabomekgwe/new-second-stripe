@@ -11,6 +11,7 @@ import { Exclude } from 'class-transformer';
 import { PaymentMethod } from './payment-method.entity';
 import { Payment } from './payment.entity';
 import { UsageCharge } from './usage-charge.entity';
+import { BillingSubscription } from './billing-subscription.entity';
 
 @Entity('users')
 export class User {
@@ -54,6 +55,9 @@ export class User {
 
   @OneToMany(() => UsageCharge, (uc) => uc.user)
   usageCharges: UsageCharge[];
+
+  @OneToMany(() => BillingSubscription, (subscription) => subscription.user)
+  billingSubscriptions: BillingSubscription[];
 
   @CreateDateColumn()
   createdAt: Date;

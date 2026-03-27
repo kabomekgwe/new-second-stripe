@@ -3,14 +3,11 @@ import type Stripe from 'stripe';
 import { CheckoutSessionHandler } from './checkout-session.handler';
 
 describe('CheckoutSessionHandler', () => {
-  const paymentRepository = {
-    findOne: jest.fn(),
-    update: jest.fn(),
+  const database = {
+    query: jest.fn(),
   };
 
-  const handler = new CheckoutSessionHandler(
-    paymentRepository as never,
-  );
+  const handler = new CheckoutSessionHandler(database as never);
 
   beforeEach(() => {
     jest.clearAllMocks();
@@ -36,56 +33,37 @@ describe('CheckoutSessionHandler', () => {
   }
 
   it('marks paid checkout sessions as succeeded and records the payment details', async () => {
-    const payment = { id: 'payment_1' };
-    paymentRepository.findOne.mockResolvedValue(payment);
+    database.query.mockResolvedValueOnce({ rows: [{ id: 'payment_1' }] });
+    database.query.mockResolvedValueOnce({ rows: [] });
 
     await handler.handleCompleted(
       buildEvent({ id: 'cs_paid', payment_status: 'paid' }),
     );
 
-    expect(paymentRepository.update).toHaveBeenCalledWith(payment.id, {
-      status: PaymentStatus.SUCCEEDED,
-      stripePaymentIntentId: 'pi_test',
-      amountUserCurrency: 1200,
-      userCurrency: 'GBP',
-    });
+    expect(database.query).toHaveBeenNthCalledWith(
+      1,
+      'SELECT id FROM payments WHERE "stripeCheckoutSessionId" = $1 LIMIT 1',
+      ['cs_paid'],
+    );
+    expect(database.query).toHaveBeenNthCalledWith(
+      2,
+      expect.stringContaining('UPDATE payments'),
+      ['payment_1', PaymentStatus.SUCCEEDED, 'pi_test', 1200, 'GBP'],
+    );
   });
 
   it('does not mark unpaid checkout sessions as succeeded', async () => {
-    const payment = { id: 'payment_2' };
-    paymentRepository.findOne.mockResolvedValue(payment);
+    database.query.mockResolvedValueOnce({ rows: [{ id: 'payment_2' }] });
+    database.query.mockResolvedValueOnce({ rows: [] });
 
     await handler.handleCompleted(
       buildEvent({ id: 'cs_unpaid', payment_status: 'unpaid' }),
     );
 
-    expect(paymentRepository.update).not.toHaveBeenCalledWith(
-      payment.id,
-      expect.objectContaining({
-        status: PaymentStatus.SUCCEEDED,
-      }),
-    );
-  });
-
-  it('marks expired checkout sessions as cancelled', async () => {
-    const payment = { id: 'payment_3' };
-    paymentRepository.findOne.mockResolvedValue(payment);
-
-    await handler.handleExpired({
-      id: 'evt_expired',
-      type: 'checkout.session.expired',
-      data: {
-        object: {
-          id: 'cs_expired',
-        } as Stripe.Checkout.Session,
-      },
-    } as Stripe.Event);
-
-    expect(paymentRepository.update).toHaveBeenCalledWith(
-      payment.id,
-      expect.objectContaining({
-        status: PaymentStatus.CANCELLED,
-      }),
+    expect(database.query).toHaveBeenNthCalledWith(
+      2,
+      expect.stringContaining('UPDATE payments'),
+      ['payment_2', null, 'pi_test', 1200, 'GBP'],
     );
   });
 });

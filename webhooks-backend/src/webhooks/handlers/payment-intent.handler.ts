@@ -1,25 +1,17 @@
 import { Injectable, Logger } from '@nestjs/common';
-import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
 import Stripe from 'stripe';
 import {
-  Payment,
-  UsageCharge,
   PaymentStatus,
   ChargeStatus,
 } from '@stripe-app/shared';
-import { EmailService } from '../../email/email.service';
+import { PostgresService } from '../../database/postgres.service';
 
 @Injectable()
 export class PaymentIntentHandler {
   private readonly logger = new Logger(PaymentIntentHandler.name);
 
   constructor(
-    @InjectRepository(Payment)
-    private paymentRepository: Repository<Payment>,
-    @InjectRepository(UsageCharge)
-    private usageChargeRepository: Repository<UsageCharge>,
-    private emailService: EmailService,
+    private readonly database: PostgresService,
   ) {}
 
   async handleSucceeded(event: Stripe.Event): Promise<void> {
@@ -27,7 +19,6 @@ export class PaymentIntentHandler {
 
     if (paymentIntent.metadata?.type === 'management_fee') {
       await this.updateUsageCharge(paymentIntent, ChargeStatus.PAID);
-      await this.sendInvoiceEmail(paymentIntent);
     }
 
     await this.updatePayment(paymentIntent, PaymentStatus.SUCCEEDED);
@@ -43,13 +34,12 @@ export class PaymentIntentHandler {
     await this.updatePayment(paymentIntent, PaymentStatus.FAILED);
   }
 
-  private async updatePayment(
-    paymentIntent: Stripe.PaymentIntent,
-    status: PaymentStatus,
-  ): Promise<void> {
-    const payment = await this.paymentRepository.findOne({
-      where: { stripePaymentIntentId: paymentIntent.id },
-    });
+  private async updatePayment(paymentIntent: Stripe.PaymentIntent, status: PaymentStatus): Promise<void> {
+    const paymentResult = await this.database.query<{ id: string }>(
+      'SELECT id FROM payments WHERE "stripePaymentIntentId" = $1 LIMIT 1',
+      [paymentIntent.id],
+    );
+    const payment = paymentResult.rows[0];
 
     if (!payment) {
       this.logger.debug(
@@ -58,45 +48,24 @@ export class PaymentIntentHandler {
       return;
     }
 
-    await this.paymentRepository.update(payment.id, { status });
+    await this.database.query(
+      'UPDATE payments SET status = $2, "updatedAt" = now() WHERE id = $1',
+      [payment.id, status],
+    );
     this.logger.log(
       `Updated payment ${payment.id} to status ${status}`,
     );
-  }
-
-  private async sendInvoiceEmail(
-    paymentIntent: Stripe.PaymentIntent,
-  ): Promise<void> {
-    const charge = await this.usageChargeRepository.findOne({
-      where: { stripePaymentIntentId: paymentIntent.id },
-      relations: ['user'],
-    });
-
-    if (!charge?.user) {
-      this.logger.warn(
-        `Cannot send invoice email: no charge or user found for PI ${paymentIntent.id}`,
-      );
-      return;
-    }
-
-    await this.emailService.sendInvoiceEmail({
-      to: charge.user.email,
-      userName: charge.user.name,
-      amountPence: charge.amountGbp,
-      description: charge.description ?? 'Management fee',
-      periodStart: charge.billingPeriodStart,
-      periodEnd: charge.billingPeriodEnd,
-      chargeId: charge.id,
-    });
   }
 
   private async updateUsageCharge(
     paymentIntent: Stripe.PaymentIntent,
     status: ChargeStatus,
   ): Promise<void> {
-    const usageCharge = await this.usageChargeRepository.findOne({
-      where: { stripePaymentIntentId: paymentIntent.id },
-    });
+    const usageChargeResult = await this.database.query<{ id: string }>(
+      'SELECT id FROM usage_charges WHERE "stripePaymentIntentId" = $1 LIMIT 1',
+      [paymentIntent.id],
+    );
+    const usageCharge = usageChargeResult.rows[0];
 
     if (!usageCharge) {
       this.logger.debug(
@@ -105,7 +74,10 @@ export class PaymentIntentHandler {
       return;
     }
 
-    await this.usageChargeRepository.update(usageCharge.id, { status });
+    await this.database.query(
+      'UPDATE usage_charges SET status = $2, "updatedAt" = now() WHERE id = $1',
+      [usageCharge.id, status],
+    );
     this.logger.log(
       `Updated usage charge ${usageCharge.id} to status ${status}`,
     );

@@ -8,31 +8,39 @@ import { WebhooksService } from './webhooks.service';
 describe('WebhooksService', () => {
   const webhookEventStore = new Map<
     string,
-    { eventId: string; type: string; status: WebhookEventStatus }
+    { eventId: string; status: WebhookEventStatus }
   >();
-  const webhookEventRepository = {
-    findOne: jest.fn(
-      async ({
-        where,
-      }: {
-        where: { eventId: string };
-      }) => webhookEventStore.get(where.eventId) ?? null,
-    ),
-    create: jest.fn((payload) => payload),
-    save: jest.fn(async (payload) => {
-      webhookEventStore.set(payload.eventId, payload);
-      return payload;
-    }),
-    update: jest.fn(async (eventId: string, payload) => {
-      const current = webhookEventStore.get(eventId) ?? {
-        eventId,
-        type: 'unknown',
-        status: WebhookEventStatus.PROCESSING,
-      };
-      webhookEventStore.set(eventId, { ...current, ...payload });
-      return undefined;
+
+  const database = {
+    query: jest.fn(async (text: string, params: unknown[]) => {
+      if (text.includes('SELECT "eventId", status FROM webhook_events')) {
+        const event = webhookEventStore.get(params[0] as string);
+        return { rows: event ? [event] : [] };
+      }
+
+      if (text.includes('INSERT INTO webhook_events')) {
+        webhookEventStore.set(params[0] as string, {
+          eventId: params[0] as string,
+          status: params[2] as WebhookEventStatus,
+        });
+        return { rows: [] };
+      }
+
+      if (text.includes('SET status = $2')) {
+        const current = webhookEventStore.get(params[0] as string);
+        if (current) {
+          webhookEventStore.set(params[0] as string, {
+            ...current,
+            status: params[1] as WebhookEventStatus,
+          });
+        }
+        return { rows: [] };
+      }
+
+      return { rows: [] };
     }),
   };
+
   const stripeService = {
     constructWebhookEvent: jest.fn(),
   };
@@ -42,35 +50,42 @@ describe('WebhooksService', () => {
     get: jest.fn().mockReturnValue('development'),
   };
 
-  const setupIntentHandler = {
-    handleSucceeded: jest.fn(),
-  };
-
+  const setupIntentHandler = { handleSucceeded: jest.fn() };
   const paymentMethodHandler = {
     handleAttached: jest.fn(),
     handleDetached: jest.fn(),
   };
-
   const paymentIntentHandler = {
     handleSucceeded: jest.fn(),
     handleFailed: jest.fn(),
   };
-
   const checkoutSessionHandler = {
     handleCompleted: jest.fn(),
     handleExpired: jest.fn(),
     handleAsyncSucceeded: jest.fn(),
     handleAsyncFailed: jest.fn(),
   };
+  const invoiceHandler = {
+    handleFinalized: jest.fn(),
+    handlePaid: jest.fn(),
+    handlePaymentFailed: jest.fn(),
+  };
+  const subscriptionHandler = {
+    handleCreated: jest.fn(),
+    handleUpdated: jest.fn(),
+    handleDeleted: jest.fn(),
+  };
 
   const service = new WebhooksService(
-    webhookEventRepository as never,
+    database as never,
     stripeService as never,
     configService as never,
     setupIntentHandler as never,
     paymentMethodHandler as never,
     paymentIntentHandler as never,
     checkoutSessionHandler as never,
+    invoiceHandler as never,
+    subscriptionHandler as never,
   );
 
   beforeEach(() => {
@@ -105,29 +120,24 @@ describe('WebhooksService', () => {
     );
   });
 
-  it('routes async checkout session failure events to the checkout handler', async () => {
+  it('routes invoice paid events to the invoice handler', async () => {
     const event = buildEvent(
-      STRIPE_WEBHOOK_EVENTS.CHECKOUT_SESSION_ASYNC_PAYMENT_FAILED,
-      'evt_async_failed',
-      { id: 'cs_async_failed' },
+      STRIPE_WEBHOOK_EVENTS.INVOICE_PAID,
+      'evt_invoice_paid',
+      { id: 'in_paid' },
     );
     stripeService.constructWebhookEvent.mockReturnValue(event);
 
     await service.handleEvent(Buffer.from('raw'), 'sig');
 
-    expect(checkoutSessionHandler.handleAsyncFailed).toHaveBeenCalledWith(
-      event,
-    );
+    expect(invoiceHandler.handlePaid).toHaveBeenCalledWith(event);
   });
 
   it('skips duplicate webhook deliveries for the same event id', async () => {
     const event = buildEvent(
       STRIPE_WEBHOOK_EVENTS.PAYMENT_INTENT_SUCCEEDED,
       'evt_duplicate',
-      {
-        id: 'pi_duplicate',
-        metadata: { type: 'management_fee' },
-      },
+      { id: 'pi_duplicate' },
     );
     stripeService.constructWebhookEvent.mockReturnValue(event);
 

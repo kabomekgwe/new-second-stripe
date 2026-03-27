@@ -1,17 +1,17 @@
 import { PaymentMethodsService } from './payment-methods.service';
 
 describe('PaymentMethodsService', () => {
-  const paymentMethodRepo = {
-    find: jest.fn(),
-    findOne: jest.fn(),
-    update: jest.fn(),
-    save: jest.fn(),
-    remove: jest.fn(),
+  const paymentMethodsSql = {
+    findById: jest.fn(),
+    findByUserId: jest.fn(),
+    upsertFromStripe: jest.fn(),
+    setDefault: jest.fn(),
+    deleteById: jest.fn(),
   };
-  const userRepo = {
-    findOne: jest.fn(),
-    update: jest.fn(),
-    save: jest.fn(),
+  const usersSql = {
+    findById: jest.fn(),
+    updateDefaultPaymentMethod: jest.fn(),
+    updateStripeCustomerAndReturn: jest.fn(),
   };
   const stripeService = {
     createCustomer: jest.fn(),
@@ -23,8 +23,8 @@ describe('PaymentMethodsService', () => {
   };
 
   const service = new PaymentMethodsService(
-    paymentMethodRepo as never,
-    userRepo as never,
+    paymentMethodsSql as never,
+    usersSql as never,
     stripeService as never,
   );
 
@@ -33,7 +33,7 @@ describe('PaymentMethodsService', () => {
   });
 
   it('reuses an active setup intent instead of creating a new one', async () => {
-    userRepo.findOne.mockResolvedValue({
+    usersSql.findById.mockResolvedValue({
       id: 'user_1',
       stripeCustomerId: 'cus_123',
     });
@@ -54,16 +54,16 @@ describe('PaymentMethodsService', () => {
   });
 
   it('updates local and Stripe defaults when setting a payment method', async () => {
-    paymentMethodRepo.findOne.mockResolvedValueOnce({
+    paymentMethodsSql.findById.mockResolvedValueOnce({
       id: 'pm_db_1',
       userId: 'user_1',
       stripePaymentMethodId: 'pm_stripe_1',
     });
-    userRepo.findOne.mockResolvedValue({
+    usersSql.findById.mockResolvedValue({
       id: 'user_1',
       stripeCustomerId: 'cus_123',
     });
-    paymentMethodRepo.findOne.mockResolvedValueOnce({
+    paymentMethodsSql.findById.mockResolvedValueOnce({
       id: 'pm_db_1',
       userId: 'user_1',
       stripePaymentMethodId: 'pm_stripe_1',
@@ -72,17 +72,14 @@ describe('PaymentMethodsService', () => {
 
     const result = await service.setDefault('user_1', 'pm_db_1');
 
-    expect(paymentMethodRepo.update).toHaveBeenCalledWith(
-      { userId: 'user_1' },
-      { isDefault: false },
+    expect(paymentMethodsSql.setDefault).toHaveBeenCalledWith(
+      'user_1',
+      'pm_stripe_1',
     );
-    expect(paymentMethodRepo.update).toHaveBeenCalledWith(
-      { userId: 'user_1', stripePaymentMethodId: 'pm_stripe_1' },
-      { isDefault: true },
+    expect(usersSql.updateDefaultPaymentMethod).toHaveBeenCalledWith(
+      'user_1',
+      'pm_stripe_1',
     );
-    expect(userRepo.update).toHaveBeenCalledWith('user_1', {
-      defaultPaymentMethodId: 'pm_stripe_1',
-    });
     expect(stripeService.updateCustomerDefaultPaymentMethod).toHaveBeenCalledWith(
       'cus_123',
       'pm_stripe_1',

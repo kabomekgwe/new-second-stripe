@@ -26,6 +26,12 @@ export class UsageCharge {
   stripeInvoiceId: string | null;
 
   @Column({ type: 'varchar', nullable: true })
+  stripeSubscriptionId: string | null;
+
+  @Column({ type: 'varchar', nullable: true })
+  stripeSubscriptionItemId: string | null;
+
+  @Column({ type: 'varchar', nullable: true })
   stripePaymentIntentId: string | null;
 
   @Column({ type: 'int' })
@@ -45,6 +51,9 @@ export class UsageCharge {
 
   @Column({ unique: true })
   idempotencyKey: string;
+
+  @Column({ type: 'timestamp', nullable: true })
+  usageReportedAt: Date | null;
 
   @CreateDateColumn()
   createdAt: Date;

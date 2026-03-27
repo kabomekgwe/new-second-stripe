@@ -3,12 +3,12 @@ import {
   NotFoundException,
   BadRequestException,
 } from '@nestjs/common';
-import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
 import Stripe from 'stripe';
 import { PaymentMethod, User, PAYMENT_METHOD_LABELS } from '@stripe-app/shared';
 import { StripeService } from '../stripe/stripe.service';
 import { generateUniqueIdempotencyKey } from '../common/utils/idempotency';
+import { UsersSqlService } from '../users/users.sql.service';
+import { PaymentMethodsSqlService } from './payment-methods.sql.service';
 
 @Injectable()
 export class PaymentMethodsService {
@@ -22,51 +22,89 @@ export class PaymentMethodsService {
   ]);
 
   constructor(
-    @InjectRepository(PaymentMethod)
-    private paymentMethodRepo: Repository<PaymentMethod>,
-    @InjectRepository(User)
-    private userRepo: Repository<User>,
-    private stripeService: StripeService,
-  ) { }
+    private readonly paymentMethodsSql: PaymentMethodsSqlService,
+    private readonly usersSql: UsersSqlService,
+    private readonly stripeService: StripeService,
+  ) {}
 
   async getUserPaymentMethods(userId: string): Promise<PaymentMethod[]> {
-    return this.paymentMethodRepo.find({
-      where: { userId },
-      order: { createdAt: 'DESC' },
-    });
+    return this.paymentMethodsSql.findByUserId(userId);
   }
 
   async getAvailablePaymentMethodTypes(): Promise<
     { type: string; label: string }[]
   > {
-    const configs =
-      await this.stripeService.getPaymentMethodConfigurations();
+    const configs = await this.stripeService.getPaymentMethodConfigurations();
     const enabledTypes: { type: string; label: string }[] = [];
 
-    // Known payment method types in Stripe
     const paymentMethodTypes = [
-      'acss_debit', 'affirm', 'afterpay_clearpay', 'alipay', 'alma',
-      'amazon_pay', 'apple_pay', 'au_becs_debit', 'bacs_debit',
-      'bancontact', 'billie', 'blik', 'boleto', 'card', 'cartes_bancaires',
-      'cashapp', 'crypto', 'customer_balance', 'eps', 'fpx', 'giropay',
-      'google_pay', 'grabpay', 'ideal', 'jcb', 'kakao_pay', 'klarna',
-      'konbini', 'kr_card', 'link', 'mb_way', 'mobilepay', 'multibanco',
-      'naver_pay', 'nz_bank_account', 'oxxo', 'p24', 'pay_by_bank',
-      'payco', 'paynow', 'paypal', 'payto', 'pix', 'promptpay',
-      'revolut_pay', 'samsung_pay', 'satispay', 'sepa_debit', 'sofort',
-      'swish', 'twint', 'us_bank_account', 'wechat_pay', 'zip'
+      'acss_debit',
+      'affirm',
+      'afterpay_clearpay',
+      'alipay',
+      'alma',
+      'amazon_pay',
+      'apple_pay',
+      'au_becs_debit',
+      'bacs_debit',
+      'bancontact',
+      'billie',
+      'blik',
+      'boleto',
+      'card',
+      'cartes_bancaires',
+      'cashapp',
+      'crypto',
+      'customer_balance',
+      'eps',
+      'fpx',
+      'giropay',
+      'google_pay',
+      'grabpay',
+      'ideal',
+      'jcb',
+      'kakao_pay',
+      'klarna',
+      'konbini',
+      'kr_card',
+      'link',
+      'mb_way',
+      'mobilepay',
+      'multibanco',
+      'naver_pay',
+      'nz_bank_account',
+      'oxxo',
+      'p24',
+      'pay_by_bank',
+      'payco',
+      'paynow',
+      'paypal',
+      'payto',
+      'pix',
+      'promptpay',
+      'revolut_pay',
+      'samsung_pay',
+      'satispay',
+      'sepa_debit',
+      'sofort',
+      'swish',
+      'twint',
+      'us_bank_account',
+      'wechat_pay',
+      'zip',
     ];
 
     for (const config of configs.data) {
       for (const type of paymentMethodTypes) {
-        const settings = (config as any)[type];
+        const settings = (config as unknown as Record<string, unknown>)[type];
         if (
           settings &&
           typeof settings === 'object' &&
-          settings.available === true
+          'available' in settings &&
+          (settings as { available?: boolean }).available === true
         ) {
           const label = PAYMENT_METHOD_LABELS[type] ?? type;
-          if (!enabledTypes.some((t) => t.type === type)) {
+          if (!enabledTypes.some((entry) => entry.type === type)) {
             enabledTypes.push({ type, label });
           }
         }
@@ -98,7 +136,7 @@ export class PaymentMethodsService {
     );
 
     const setupIntent = await this.stripeService.createSetupIntent(
-      user?.stripeCustomerId!,
+      user.stripeCustomerId!,
       idempotencyKey,
     );
 
@@ -112,9 +150,13 @@ export class PaymentMethodsService {
     const pm = await this.findPaymentMethodOrFail(paymentMethodId, userId);
     const user = await this.findUserOrFail(userId);
 
-    await this.updateLocalDefaultPaymentMethod(userId, pm.stripePaymentMethodId);
+    await this.paymentMethodsSql.setDefault(userId, pm.stripePaymentMethodId);
     await this.syncStripeDefaultPaymentMethod(
       user.stripeCustomerId,
+      pm.stripePaymentMethodId,
+    );
+    await this.usersSql.updateDefaultPaymentMethod(
+      userId,
       pm.stripePaymentMethodId,
     );
 
@@ -139,11 +181,12 @@ export class PaymentMethodsService {
     );
 
     if (pm.isDefault) {
-      await this.updateLocalDefaultPaymentMethod(userId, null);
+      await this.paymentMethodsSql.setDefault(userId, null);
+      await this.usersSql.updateDefaultPaymentMethod(userId, null);
       await this.syncStripeDefaultPaymentMethod(user.stripeCustomerId, null);
     }
 
-    await this.paymentMethodRepo.remove(pm);
+    await this.paymentMethodsSql.deleteById(pm.id);
   }
 
   async syncPaymentMethodFromStripe(
@@ -151,12 +194,9 @@ export class PaymentMethodsService {
     userId: string,
   ): Promise<PaymentMethod> {
     const card = stripePaymentMethod.card;
+    const user = await this.findUserOrFail(userId);
 
-    let pm = await this.paymentMethodRepo.findOne({
-      where: { stripePaymentMethodId: stripePaymentMethod.id },
-    });
-
-    const data: Partial<PaymentMethod> = {
+    return this.paymentMethodsSql.upsertFromStripe({
       userId,
       stripePaymentMethodId: stripePaymentMethod.id,
       type: stripePaymentMethod.type,
@@ -165,19 +205,13 @@ export class PaymentMethodsService {
       expiryMonth: card?.exp_month ?? null,
       expiryYear: card?.exp_year ?? null,
       metadata: stripePaymentMethod.metadata ?? null,
-    };
-
-    if (pm) {
-      Object.assign(pm, data);
-    } else {
-      pm = this.paymentMethodRepo.create(data);
-    }
-
-    return this.paymentMethodRepo.save(pm);
+      isDefault:
+        user.defaultPaymentMethodId === stripePaymentMethod.id ? true : false,
+    });
   }
 
   private async findUserOrFail(userId: string): Promise<User> {
-    const user = await this.userRepo.findOne({ where: { id: userId } });
+    const user = await this.usersSql.findById(userId);
     if (!user) {
       throw new NotFoundException('User not found');
     }
@@ -203,10 +237,10 @@ export class PaymentMethodsService {
       idempotencyKey,
     );
 
-    return this.userRepo.save({
-      ...user,
-      stripeCustomerId: customer.id,
-    });
+    return (await this.usersSql.updateStripeCustomerAndReturn(
+      userId,
+      customer.id,
+    )) as User;
   }
 
   private async findActiveSetupIntent(
@@ -221,24 +255,6 @@ export class PaymentMethodsService {
         ),
       ) ?? null
     );
-  }
-
-  private async updateLocalDefaultPaymentMethod(
-    userId: string,
-    stripePaymentMethodId: string | null,
-  ): Promise<void> {
-    await this.paymentMethodRepo.update({ userId }, { isDefault: false });
-
-    if (stripePaymentMethodId) {
-      await this.paymentMethodRepo.update(
-        { userId, stripePaymentMethodId },
-        { isDefault: true },
-      );
-    }
-
-    await this.userRepo.update(userId, {
-      defaultPaymentMethodId: stripePaymentMethodId,
-    });
   }
 
   private async syncStripeDefaultPaymentMethod(
@@ -264,9 +280,7 @@ export class PaymentMethodsService {
     paymentMethodId: string,
     userId: string,
   ): Promise<PaymentMethod> {
-    const pm = await this.paymentMethodRepo.findOne({
-      where: { id: paymentMethodId, userId },
-    });
+    const pm = await this.paymentMethodsSql.findById(paymentMethodId, userId);
     if (!pm) {
       throw new NotFoundException('Payment method not found');
     }

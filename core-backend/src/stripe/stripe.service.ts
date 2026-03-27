@@ -156,6 +156,76 @@ export class StripeService {
     });
   }
 
+  async listSubscriptions(
+    customerId: string,
+    limit = 10,
+  ): Promise<Stripe.ApiList<Stripe.Subscription>> {
+    return this.stripe.subscriptions.list({
+      customer: customerId,
+      status: 'all',
+      limit,
+    });
+  }
+
+  async retrievePrice(priceId: string): Promise<Stripe.Price> {
+    return this.stripe.prices.retrieve(priceId);
+  }
+
+  async retrieveBillingMeter(
+    meterId: string,
+  ): Promise<Stripe.Billing.Meter> {
+    return this.stripe.billing.meters.retrieve(meterId);
+  }
+
+  async createBillingSubscription(params: {
+    customerId: string;
+    priceId: string;
+    userId: string;
+  }): Promise<Stripe.Subscription> {
+    return this.stripe.subscriptions.create({
+      customer: params.customerId,
+      collection_method: 'charge_automatically',
+      items: [{ price: params.priceId }],
+      metadata: {
+        userId: params.userId,
+      },
+    });
+  }
+
+  async createMeterEvent(params: {
+    eventName: string;
+    customerId: string;
+    value: number;
+    identifier: string;
+    timestamp: number;
+  }): Promise<Stripe.Billing.MeterEvent> {
+    return this.stripe.billing.meterEvents.create({
+      event_name: params.eventName,
+      payload: {
+        stripe_customer_id: params.customerId,
+        value: String(params.value),
+      },
+      identifier: params.identifier,
+      timestamp: params.timestamp,
+    });
+  }
+
+  async createUsageRecord(params: {
+    eventName: string;
+    customerId: string;
+    value: number;
+    identifier: string;
+    timestamp: number;
+  }): Promise<Stripe.Billing.MeterEvent> {
+    return this.createMeterEvent({
+      eventName: params.eventName,
+      customerId: params.customerId,
+      value: params.value,
+      identifier: params.identifier,
+      timestamp: params.timestamp,
+    });
+  }
+
   constructWebhookEvent(
     rawBody: Buffer,
     signature: string,

@@ -1,4 +1,8 @@
-import { ChargeStatus, PaymentStatus } from './stripe.types';
+import {
+  BillingSubscriptionStatus,
+  ChargeStatus,
+  PaymentStatus,
+} from './stripe.types';
 
 // Auth
 export interface RegisterRequest {
@@ -23,6 +27,16 @@ export interface UserResponse {
   defaultPaymentMethodId: string | null;
   monthlyManagementFee: number | null;
   accountValue: number | null;
+}
+
+export interface BillingSubscriptionResponse {
+  id: string;
+  stripeSubscriptionId: string;
+  stripeSubscriptionItemId: string;
+  status: BillingSubscriptionStatus;
+  currentPeriodStart: string | null;
+  currentPeriodEnd: string | null;
+  cancelAtPeriodEnd: boolean;
 }
 
 // Payment Methods
@@ -100,6 +114,8 @@ export interface UsageChargeResponse {
   billingPeriodStart: string;
   billingPeriodEnd: string;
   status: ChargeStatus;
+  stripeInvoiceId: string | null;
+  stripeSubscriptionId: string | null;
   stripePaymentIntentId: string | null;
   createdAt: string;
 }

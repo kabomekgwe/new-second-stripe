@@ -12,6 +12,17 @@ export enum ChargeStatus {
   FAILED = 'failed',
 }
 
+export enum BillingSubscriptionStatus {
+  ACTIVE = 'active',
+  PAST_DUE = 'past_due',
+  CANCELED = 'canceled',
+  UNPAID = 'unpaid',
+  INCOMPLETE = 'incomplete',
+  INCOMPLETE_EXPIRED = 'incomplete_expired',
+  TRIALING = 'trialing',
+  PAUSED = 'paused',
+}
+
 export enum WebhookEventStatus {
   PROCESSING = 'processing',
   PROCESSED = 'processed',
@@ -62,4 +73,10 @@ export const STRIPE_WEBHOOK_EVENTS = {
     'checkout.session.async_payment_succeeded',
   CHECKOUT_SESSION_ASYNC_PAYMENT_FAILED:
     'checkout.session.async_payment_failed',
+  INVOICE_FINALIZED: 'invoice.finalized',
+  INVOICE_PAID: 'invoice.paid',
+  INVOICE_PAYMENT_FAILED: 'invoice.payment_failed',
+  CUSTOMER_SUBSCRIPTION_CREATED: 'customer.subscription.created',
+  CUSTOMER_SUBSCRIPTION_UPDATED: 'customer.subscription.updated',
+  CUSTOMER_SUBSCRIPTION_DELETED: 'customer.subscription.deleted',
 } as const;

@@ -4,8 +4,6 @@ import {
   BadRequestException,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
 import {
   Payment,
   User,
@@ -18,20 +16,23 @@ import { StripeService } from '../stripe/stripe.service';
 import { generateUniqueIdempotencyKey } from '../common/utils/idempotency';
 import { CreatePaymentDto } from './dto/create-payment.dto';
 import { CreateCheckoutSessionDto } from './dto/create-checkout-session.dto';
+import { UsersSqlService } from '../users/users.sql.service';
+import { PaymentsSqlService } from './payments.sql.service';
 
 @Injectable()
 export class PaymentsService {
   private readonly frontendUrl: string;
 
   constructor(
-    @InjectRepository(Payment)
-    private paymentRepo: Repository<Payment>,
-    @InjectRepository(User)
-    private userRepo: Repository<User>,
-    private stripeService: StripeService,
-    private configService: ConfigService,
+    private readonly paymentsSql: PaymentsSqlService,
+    private readonly usersSql: UsersSqlService,
+    private readonly stripeService: StripeService,
+    private readonly configService: ConfigService,
   ) {
-    this.frontendUrl = this.configService.get<string>('FRONTEND_URL', 'http://localhost:3847');
+    this.frontendUrl = this.configService.get<string>(
+      'FRONTEND_URL',
+      'http://localhost:3847',
+    );
   }
 
   async getFxQuote(
@@ -51,7 +52,12 @@ export class PaymentsService {
       };
     }
 
-    const idempotencyKey = generateUniqueIdempotencyKey('fx_quote', userId, String(amountGbp), user.currency);
+    const idempotencyKey = generateUniqueIdempotencyKey(
+      'fx_quote',
+      userId,
+      String(amountGbp),
+      user.currency,
+    );
 
     const quote = await this.stripeService.createFxQuote(
       {
@@ -85,7 +91,12 @@ export class PaymentsService {
       );
     }
 
-    const idempotencyKey = generateUniqueIdempotencyKey('payment', userId, String(dto.amountGbp), dto.paymentMethodId);
+    const idempotencyKey = generateUniqueIdempotencyKey(
+      'payment',
+      userId,
+      String(dto.amountGbp),
+      dto.paymentMethodId,
+    );
 
     const paymentIntent = await this.stripeService.createPaymentIntent(
       {
@@ -99,21 +110,23 @@ export class PaymentsService {
         usage: 'off_session',
         metadata: { userId, type: 'user_payment' },
         ...(dto.fxQuoteId ? { fx_quote: dto.fxQuoteId } : {}),
-      } as any,
+      } as never,
       idempotencyKey,
     );
 
-    await this.paymentRepo.save(
-      this.paymentRepo.create({
-        userId,
-        stripePaymentIntentId: paymentIntent.id,
-        amountGbp: dto.amountGbp,
-        fxQuoteId: dto.fxQuoteId ?? null,
-        status: PaymentStatus.PENDING,
-        paymentMethodId: dto.paymentMethodId,
-        idempotencyKey,
-      }),
-    );
+    await this.paymentsSql.create({
+      userId,
+      stripePaymentIntentId: paymentIntent.id,
+      stripeCheckoutSessionId: null,
+      amountGbp: dto.amountGbp,
+      amountUserCurrency: null,
+      userCurrency: null,
+      fxQuoteId: dto.fxQuoteId ?? null,
+      status: PaymentStatus.PENDING,
+      paymentMethodId: dto.paymentMethodId,
+      idempotencyKey,
+      metadata: null,
+    });
 
     return {
       clientSecret: paymentIntent.client_secret!,
@@ -133,7 +146,11 @@ export class PaymentsService {
       );
     }
 
-    const idempotencyKey = generateUniqueIdempotencyKey('checkout', userId, String(dto.amountGbp));
+    const idempotencyKey = generateUniqueIdempotencyKey(
+      'checkout',
+      userId,
+      String(dto.amountGbp),
+    );
 
     const session = await this.stripeService.createCheckoutSession(
       {
@@ -159,15 +176,19 @@ export class PaymentsService {
       idempotencyKey,
     );
 
-    await this.paymentRepo.save(
-      this.paymentRepo.create({
-        userId,
-        stripeCheckoutSessionId: session.id,
-        amountGbp: dto.amountGbp,
-        status: PaymentStatus.PENDING,
-        idempotencyKey,
-      }),
-    );
+    await this.paymentsSql.create({
+      userId,
+      stripePaymentIntentId: null,
+      stripeCheckoutSessionId: session.id,
+      amountGbp: dto.amountGbp,
+      amountUserCurrency: null,
+      userCurrency: null,
+      fxQuoteId: null,
+      status: PaymentStatus.PENDING,
+      paymentMethodId: null,
+      idempotencyKey,
+      metadata: null,
+    });
 
     return {
       clientSecret: session.client_secret!,
@@ -176,16 +197,11 @@ export class PaymentsService {
   }
 
   async getPayments(userId: string): Promise<Payment[]> {
-    return this.paymentRepo.find({
-      where: { userId },
-      order: { createdAt: 'DESC' },
-    });
+    return this.paymentsSql.findByUserId(userId);
   }
 
   async getPaymentById(userId: string, paymentId: string): Promise<Payment> {
-    const payment = await this.paymentRepo.findOne({
-      where: { id: paymentId, userId },
-    });
+    const payment = await this.paymentsSql.findById(paymentId, userId);
     if (!payment) {
       throw new NotFoundException('Payment not found');
     }
@@ -193,7 +209,7 @@ export class PaymentsService {
   }
 
   private async findUserOrFail(userId: string): Promise<User> {
-    const user = await this.userRepo.findOne({ where: { id: userId } });
+    const user = await this.usersSql.findById(userId);
     if (!user) {
       throw new NotFoundException('User not found');
     }

@@ -1,6 +1,7 @@
 import { TypeOrmModuleOptions } from '@nestjs/typeorm';
 import { ConfigService } from '@nestjs/config';
 import {
+  BillingSubscription,
   User,
   PaymentMethod,
   Payment,
@@ -15,6 +16,13 @@ export const getDatabaseConfig = (configService: ConfigService): TypeOrmModuleOp
   username: configService.get('DB_USER', 'postgres'),
   password: configService.get('DB_PASSWORD', 'postgres'),
   database: configService.get('DB_NAME', 'stripe_app'),
-  entities: [User, PaymentMethod, Payment, UsageCharge, WebhookEvent],
+  entities: [
+    BillingSubscription,
+    User,
+    PaymentMethod,
+    Payment,
+    UsageCharge,
+    WebhookEvent,
+  ],
   synchronize: true, // dev only
 });

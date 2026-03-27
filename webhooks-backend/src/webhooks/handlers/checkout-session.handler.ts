@@ -1,16 +1,14 @@
 import { Injectable, Logger } from '@nestjs/common';
-import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
 import Stripe from 'stripe';
-import { Payment, PaymentStatus } from '@stripe-app/shared';
+import { PaymentStatus } from '@stripe-app/shared';
+import { PostgresService } from '../../database/postgres.service';
 
 @Injectable()
 export class CheckoutSessionHandler {
   private readonly logger = new Logger(CheckoutSessionHandler.name);
 
   constructor(
-    @InjectRepository(Payment)
-    private paymentRepository: Repository<Payment>,
+    private readonly database: PostgresService,
   ) {}
 
   async handleCompleted(event: Stripe.Event): Promise<void> {
@@ -45,9 +43,11 @@ export class CheckoutSessionHandler {
     session: Stripe.Checkout.Session,
     status: PaymentStatus | null,
   ): Promise<void> {
-    const payment = await this.paymentRepository.findOne({
-      where: { stripeCheckoutSessionId: session.id },
-    });
+    const paymentResult = await this.database.query<{ id: string }>(
+      'SELECT id FROM payments WHERE "stripeCheckoutSessionId" = $1 LIMIT 1',
+      [session.id],
+    );
+    const payment = paymentResult.rows[0];
 
     if (!payment) {
       this.logger.debug(
@@ -61,12 +61,25 @@ export class CheckoutSessionHandler {
         ? session.payment_intent
         : session.payment_intent?.id ?? null;
 
-    await this.paymentRepository.update(payment.id, {
-      ...(status ? { status } : {}),
-      stripePaymentIntentId: paymentIntentId,
-      amountUserCurrency: session.amount_total,
-      userCurrency: session.currency?.toUpperCase() ?? null,
-    });
+    await this.database.query(
+      `
+        UPDATE payments
+        SET
+          status = COALESCE($2, status),
+          "stripePaymentIntentId" = $3,
+          "amountUserCurrency" = $4,
+          "userCurrency" = $5,
+          "updatedAt" = now()
+        WHERE id = $1
+      `,
+      [
+        payment.id,
+        status,
+        paymentIntentId,
+        session.amount_total ?? null,
+        session.currency?.toUpperCase() ?? null,
+      ],
+    );
 
     this.logger.log(
       `Checkout session ${session.id} updated payment ${payment.id}${status ? ` to ${status}` : ''}`,

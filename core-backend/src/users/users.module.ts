@@ -1,11 +1,9 @@
 import { Module } from '@nestjs/common';
-import { TypeOrmModule } from '@nestjs/typeorm';
-import { User } from '@stripe-app/shared';
 import { UsersService } from './users.service';
+import { UsersSqlService } from './users.sql.service';
 
 @Module({
-  imports: [TypeOrmModule.forFeature([User])],
-  providers: [UsersService],
+  providers: [UsersService, UsersSqlService],
   exports: [UsersService],
 })
 export class UsersModule {}

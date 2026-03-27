@@ -1,18 +1,13 @@
 import { Injectable, Logger } from '@nestjs/common';
-import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
 import Stripe from 'stripe';
-import { User, PaymentMethod } from '@stripe-app/shared';
+import { PostgresService } from '../../database/postgres.service';
 
 @Injectable()
 export class PaymentMethodHandler {
   private readonly logger = new Logger(PaymentMethodHandler.name);
 
   constructor(
-    @InjectRepository(User)
-    private userRepository: Repository<User>,
-    @InjectRepository(PaymentMethod)
-    private paymentMethodRepository: Repository<PaymentMethod>,
+    private readonly database: PostgresService,
   ) {}
 
   async handleAttached(event: Stripe.Event): Promise<void> {
@@ -24,25 +19,21 @@ export class PaymentMethodHandler {
       return;
     }
 
-    const user = await this.userRepository.findOne({
-      where: { stripeCustomerId: customerId },
-    });
+    const userResult = await this.database.query<{
+      id: string;
+      defaultPaymentMethodId: string | null;
+    }>(
+      'SELECT id, "defaultPaymentMethodId" FROM users WHERE "stripeCustomerId" = $1 LIMIT 1',
+      [customerId],
+    );
+    const user = userResult.rows[0];
 
     if (!user) {
       this.logger.warn(`No user found for Stripe customer ${customerId}`);
       return;
     }
 
-    const pmData: Pick<
-      PaymentMethod,
-      | 'userId'
-      | 'stripePaymentMethodId'
-      | 'type'
-      | 'last4'
-      | 'brand'
-      | 'expiryMonth'
-      | 'expiryYear'
-    > = {
+    const pmData = {
       userId: user.id,
       stripePaymentMethodId: stripePm.id,
       type: stripePm.type,
@@ -52,13 +43,8 @@ export class PaymentMethodHandler {
       expiryYear: stripePm.card?.exp_year ?? null,
     };
 
-    const existing = await this.paymentMethodRepository.findOne({
-      where: { stripePaymentMethodId: stripePm.id },
-    });
-
     await this.upsertPaymentMethod(stripePm.id, pmData);
 
-    // Set as default if user has no default payment method
     if (!user.defaultPaymentMethodId) {
       await this.setDefaultPaymentMethod(user.id, stripePm.id);
     }
@@ -71,9 +57,14 @@ export class PaymentMethodHandler {
   async handleDetached(event: Stripe.Event): Promise<void> {
     const stripePm = event.data.object as Stripe.PaymentMethod;
 
-    const existing = await this.paymentMethodRepository.findOne({
-      where: { stripePaymentMethodId: stripePm.id },
-    });
+    const existingResult = await this.database.query<{
+      id: string;
+      userId: string;
+    }>(
+      'SELECT id, "userId" FROM payment_methods WHERE "stripePaymentMethodId" = $1 LIMIT 1',
+      [stripePm.id],
+    );
+    const existing = existingResult.rows[0];
 
     if (!existing) {
       this.logger.debug(
@@ -83,17 +74,24 @@ export class PaymentMethodHandler {
     }
 
     const userId = existing.userId;
-    await this.paymentMethodRepository.remove(existing);
+    await this.database.query(
+      'DELETE FROM payment_methods WHERE id = $1',
+      [existing.id],
+    );
 
-    // Clear default if this was the user's default payment method
-    const user = await this.userRepository.findOne({
-      where: { id: userId },
-    });
+    const userResult = await this.database.query<{
+      defaultPaymentMethodId: string | null;
+    }>(
+      'SELECT "defaultPaymentMethodId" FROM users WHERE id = $1 LIMIT 1',
+      [userId],
+    );
+    const user = userResult.rows[0];
 
     if (user?.defaultPaymentMethodId === stripePm.id) {
-      await this.userRepository.update(userId, {
-        defaultPaymentMethodId: null,
-      });
+      await this.database.query(
+        'UPDATE users SET "defaultPaymentMethodId" = NULL, "updatedAt" = now() WHERE id = $1',
+        [userId],
+      );
     }
 
     this.logger.log(
@@ -103,28 +101,46 @@ export class PaymentMethodHandler {
 
   private async upsertPaymentMethod(
     stripePaymentMethodId: string,
-    pmData: Pick<
-      PaymentMethod,
-      | 'userId'
-      | 'stripePaymentMethodId'
-      | 'type'
-      | 'last4'
-      | 'brand'
-      | 'expiryMonth'
-      | 'expiryYear'
-    >,
+    pmData: {
+      userId: string;
+      stripePaymentMethodId: string;
+      type: string;
+      last4: string | null;
+      brand: string | null;
+      expiryMonth: number | null;
+      expiryYear: number | null;
+    },
   ): Promise<void> {
-    const existing = await this.paymentMethodRepository.findOne({
-      where: { stripePaymentMethodId },
-    });
-
-    if (existing) {
-      await this.paymentMethodRepository.update(existing.id, pmData);
-      return;
-    }
-
-    await this.paymentMethodRepository.save(
-      this.paymentMethodRepository.create(pmData),
+    await this.database.query(
+      `
+        INSERT INTO payment_methods (
+          id,
+          "userId",
+          "stripePaymentMethodId",
+          type,
+          last4,
+          brand,
+          "expiryMonth",
+          "expiryYear"
+        ) VALUES (gen_random_uuid(), $1, $2, $3, $4, $5, $6, $7)
+        ON CONFLICT ("stripePaymentMethodId") DO UPDATE SET
+          "userId" = EXCLUDED."userId",
+          type = EXCLUDED.type,
+          last4 = EXCLUDED.last4,
+          brand = EXCLUDED.brand,
+          "expiryMonth" = EXCLUDED."expiryMonth",
+          "expiryYear" = EXCLUDED."expiryYear",
+          "updatedAt" = now()
+      `,
+      [
+        pmData.userId,
+        stripePaymentMethodId,
+        pmData.type,
+        pmData.last4,
+        pmData.brand,
+        pmData.expiryMonth,
+        pmData.expiryYear,
+      ],
     );
   }
 
@@ -132,13 +148,24 @@ export class PaymentMethodHandler {
     userId: string,
     stripePaymentMethodId: string,
   ): Promise<void> {
-    await this.paymentMethodRepository.update({ userId }, { isDefault: false });
-    await this.paymentMethodRepository.update(
-      { userId, stripePaymentMethodId },
-      { isDefault: true },
-    );
-    await this.userRepository.update(userId, {
-      defaultPaymentMethodId: stripePaymentMethodId,
+    await this.database.transaction(async (client) => {
+      await this.database.query(
+        'UPDATE payment_methods SET "isDefault" = false, "updatedAt" = now() WHERE "userId" = $1',
+        [userId],
+        client,
+      );
+      await this.database.query(
+        `UPDATE payment_methods
+         SET "isDefault" = true, "updatedAt" = now()
+         WHERE "userId" = $1 AND "stripePaymentMethodId" = $2`,
+        [userId, stripePaymentMethodId],
+        client,
+      );
+      await this.database.query(
+        'UPDATE users SET "defaultPaymentMethodId" = $2, "updatedAt" = now() WHERE id = $1',
+        [userId, stripePaymentMethodId],
+        client,
+      );
     });
   }
 }

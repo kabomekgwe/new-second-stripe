@@ -1,17 +1,17 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { InjectRepository } from '@nestjs/typeorm';
 import {
   STRIPE_WEBHOOK_EVENTS,
-  WebhookEvent,
   WebhookEventStatus,
 } from '@stripe-app/shared';
-import { Repository } from 'typeorm';
 import { StripeService } from '../stripe/stripe.service';
+import { PostgresService } from '../database/postgres.service';
 import { SetupIntentHandler } from './handlers/setup-intent.handler';
 import { PaymentMethodHandler } from './handlers/payment-method.handler';
 import { PaymentIntentHandler } from './handlers/payment-intent.handler';
 import { CheckoutSessionHandler } from './handlers/checkout-session.handler';
+import { InvoiceHandler } from './handlers/invoice.handler';
+import { SubscriptionHandler } from './handlers/subscription.handler';
 
 @Injectable()
 export class WebhooksService {
@@ -19,14 +19,15 @@ export class WebhooksService {
   private readonly webhookSecret: string;
 
   constructor(
-    @InjectRepository(WebhookEvent)
-    private webhookEventRepository: Repository<WebhookEvent>,
-    private stripeService: StripeService,
-    private configService: ConfigService,
-    private setupIntentHandler: SetupIntentHandler,
-    private paymentMethodHandler: PaymentMethodHandler,
-    private paymentIntentHandler: PaymentIntentHandler,
-    private checkoutSessionHandler: CheckoutSessionHandler,
+    private readonly database: PostgresService,
+    private readonly stripeService: StripeService,
+    private readonly configService: ConfigService,
+    private readonly setupIntentHandler: SetupIntentHandler,
+    private readonly paymentMethodHandler: PaymentMethodHandler,
+    private readonly paymentIntentHandler: PaymentIntentHandler,
+    private readonly checkoutSessionHandler: CheckoutSessionHandler,
+    private readonly invoiceHandler: InvoiceHandler,
+    private readonly subscriptionHandler: SubscriptionHandler,
   ) {
     this.webhookSecret =
       this.configService.getOrThrow<string>('STRIPE_WEBHOOK_SECRET');
@@ -43,9 +44,14 @@ export class WebhooksService {
       signature,
       this.webhookSecret,
     );
-    const existingEvent = await this.webhookEventRepository.findOne({
-      where: { eventId: event.id },
-    });
+    const existingEventResult = await this.database.query<{
+      eventId: string;
+      status: WebhookEventStatus;
+    }>(
+      'SELECT "eventId", status FROM webhook_events WHERE "eventId" = $1 LIMIT 1',
+      [event.id],
+    );
+    const existingEvent = existingEventResult.rows[0] ?? null;
 
     if (existingEvent?.status === WebhookEventStatus.PROCESSED) {
       this.logger.log(`Skipping duplicate Stripe event ${event.id}`);
@@ -57,14 +63,23 @@ export class WebhooksService {
       return;
     }
 
-    await this.webhookEventRepository.save(
-      this.webhookEventRepository.create({
-        eventId: event.id,
-        type: event.type,
-        status: WebhookEventStatus.PROCESSING,
-        processedAt: null,
-        lastError: null,
-      }),
+    await this.database.query(
+      `
+        INSERT INTO webhook_events (
+          "eventId",
+          type,
+          status,
+          "processedAt",
+          "lastError"
+        ) VALUES ($1, $2, $3, $4, $5)
+        ON CONFLICT ("eventId") DO UPDATE SET
+          type = EXCLUDED.type,
+          status = EXCLUDED.status,
+          "processedAt" = EXCLUDED."processedAt",
+          "lastError" = EXCLUDED."lastError",
+          "updatedAt" = now()
+      `,
+      [event.id, event.type, WebhookEventStatus.PROCESSING, null, null],
     );
 
     this.logger.log(`Received Stripe event: ${event.type} (${event.id})`);
@@ -107,23 +122,54 @@ export class WebhooksService {
           await this.checkoutSessionHandler.handleExpired(event);
           break;
 
+        case STRIPE_WEBHOOK_EVENTS.INVOICE_FINALIZED:
+          await this.invoiceHandler.handleFinalized(event);
+          break;
+
+        case STRIPE_WEBHOOK_EVENTS.INVOICE_PAID:
+          await this.invoiceHandler.handlePaid(event);
+          break;
+
+        case STRIPE_WEBHOOK_EVENTS.INVOICE_PAYMENT_FAILED:
+          await this.invoiceHandler.handlePaymentFailed(event);
+          break;
+
+        case STRIPE_WEBHOOK_EVENTS.CUSTOMER_SUBSCRIPTION_CREATED:
+          await this.subscriptionHandler.handleCreated(event);
+          break;
+
+        case STRIPE_WEBHOOK_EVENTS.CUSTOMER_SUBSCRIPTION_UPDATED:
+          await this.subscriptionHandler.handleUpdated(event);
+          break;
+
+        case STRIPE_WEBHOOK_EVENTS.CUSTOMER_SUBSCRIPTION_DELETED:
+          await this.subscriptionHandler.handleDeleted(event);
+          break;
+
         default:
           this.logger.debug(`Unhandled event type: ${event.type}`);
       }
 
-      await this.webhookEventRepository.update(event.id, {
-        status: WebhookEventStatus.PROCESSED,
-        processedAt: new Date(),
-        lastError: null,
-      });
+      await this.database.query(
+        `
+          UPDATE webhook_events
+          SET status = $2, "processedAt" = $3, "lastError" = NULL, "updatedAt" = now()
+          WHERE "eventId" = $1
+        `,
+        [event.id, WebhookEventStatus.PROCESSED, new Date()],
+      );
     } catch (error) {
       const errorMessage =
         error instanceof Error ? error.message : 'Unknown error';
 
-      await this.webhookEventRepository.update(event.id, {
-        status: WebhookEventStatus.FAILED,
-        lastError: errorMessage,
-      });
+      await this.database.query(
+        `
+          UPDATE webhook_events
+          SET status = $2, "lastError" = $3, "updatedAt" = now()
+          WHERE "eventId" = $1
+        `,
+        [event.id, WebhookEventStatus.FAILED, errorMessage],
+      );
 
       this.logger.error(
         `Error processing event ${event.type} (${event.id}): ${errorMessage}`,

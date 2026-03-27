@@ -1,61 +1,46 @@
-import { Injectable, ConflictException } from '@nestjs/common';
-import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
-import * as bcrypt from 'bcrypt';
-import { User, getCurrencyForCountry } from '@stripe-app/shared';
+import { Injectable } from '@nestjs/common';
+import { User } from '@stripe-app/shared';
 import { StripeService } from '../stripe/stripe.service';
 import { CreateUserDto } from './dto/create-user.dto';
 import { generateIdempotencyKey } from '../common/utils/idempotency';
+import { UsersSqlService } from './users.sql.service';
 
 @Injectable()
 export class UsersService {
   constructor(
-    @InjectRepository(User)
-    private usersRepository: Repository<User>,
-    private stripeService: StripeService,
+    private readonly usersSqlService: UsersSqlService,
+    private readonly stripeService: StripeService,
   ) {}
 
   async findById(id: string): Promise<User | null> {
-    return this.usersRepository.findOne({ where: { id } });
+    return this.usersSqlService.findById(id);
   }
 
   async findByEmail(email: string): Promise<User | null> {
-    return this.usersRepository.findOne({ where: { email } });
+    return this.usersSqlService.findByEmail(email);
   }
 
   async create(dto: CreateUserDto): Promise<User> {
-    const existing = await this.findByEmail(dto.email);
-    if (existing) {
-      throw new ConflictException('Email already registered');
-    }
-
-    const hashedPassword = await bcrypt.hash(dto.password, 10);
-    const currency = getCurrencyForCountry(dto.country);
-
-    const user = this.usersRepository.create({
-      email: dto.email,
-      password: hashedPassword,
-      name: dto.name,
-      country: dto.country,
-      currency,
-    });
-
-    const savedUser = await this.usersRepository.save(user);
+    const user = await this.usersSqlService.create(dto);
 
     try {
       const stripeCustomer = await this.stripeService.createCustomer(
         {
           email: dto.email,
           name: dto.name,
-          metadata: { userId: savedUser.id },
+          metadata: { userId: user.id },
         },
-        generateIdempotencyKey('create_customer', savedUser.id),
+        generateIdempotencyKey('create_customer', user.id),
       );
 
-      savedUser.stripeCustomerId = stripeCustomer.id;
-      return this.usersRepository.save(savedUser);
+      const updatedUser = await this.usersSqlService.updateStripeCustomerAndReturn(
+        user.id,
+        stripeCustomer.id,
+      );
+
+      return updatedUser ?? user;
     } catch (error) {
-      await this.usersRepository.delete(savedUser.id);
+      await this.usersSqlService.deleteById(user.id);
       throw error;
     }
   }
@@ -64,8 +49,6 @@ export class UsersService {
     userId: string,
     customerId: string,
   ): Promise<void> {
-    await this.usersRepository.update(userId, {
-      stripeCustomerId: customerId,
-    });
+    await this.usersSqlService.updateStripeCustomerId(userId, customerId);
   }
 }

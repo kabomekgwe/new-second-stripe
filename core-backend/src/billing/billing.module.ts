@@ -1,18 +1,15 @@
 import { Module } from '@nestjs/common';
-import { TypeOrmModule } from '@nestjs/typeorm';
 import { ScheduleModule } from '@nestjs/schedule';
-import { UsageCharge, User } from '@stripe-app/shared';
 import { BillingService } from './billing.service';
 import { BillingScheduler } from './billing.scheduler';
 import { BillingController } from './billing.controller';
+import { BillingSqlService } from './billing.sql.service';
+import { UsersSqlService } from '../users/users.sql.service';
 
 @Module({
-  imports: [
-    TypeOrmModule.forFeature([UsageCharge, User]),
-    ScheduleModule.forRoot(),
-  ],
+  imports: [ScheduleModule.forRoot()],
   controllers: [BillingController],
-  providers: [BillingService, BillingScheduler],
+  providers: [BillingService, BillingScheduler, BillingSqlService, UsersSqlService],
   exports: [BillingService],
 })
 export class BillingModule {}
