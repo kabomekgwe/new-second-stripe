@@ -91,7 +91,7 @@ function SetupForm() {
     setSubmitting(true);
     setError('');
 
-    const { error } = await stripe.confirmSetup({
+    const { setupIntent, error } = await stripe.confirmSetup({
       elements,
       redirect: 'if_required',
       confirmParams: {
@@ -105,21 +105,32 @@ function SetupForm() {
       setError(error.message || 'Setup failed. Please try again.');
       setSubmitting(false);
     } else {
-      // Poll for the payment method to appear (webhook may take a moment)
+      const setupPaymentMethodId =
+        typeof setupIntent?.payment_method === 'string'
+          ? setupIntent.payment_method
+          : setupIntent?.payment_method?.id ?? null;
+
       const maxAttempts = 6;
-      for (let i = 0; i < maxAttempts; i++) {
-        await new Promise((r) => setTimeout(r, 1000));
-        try {
-          const result = await lazyGetPaymentMethods().unwrap();
-          if (result.length > 0) {
-            setSuccess(true);
-            return;
+      if (setupPaymentMethodId) {
+        for (let i = 0; i < maxAttempts; i++) {
+          try {
+            const result = await lazyGetPaymentMethods().unwrap();
+            if (
+              result.some(
+                (method) => method.stripePaymentMethodId === setupPaymentMethodId,
+              )
+            ) {
+              setSuccess(true);
+              return;
+            }
+          } catch {
+            // ignore polling errors
           }
-        } catch {
-          // ignore polling errors
+
+          await new Promise((r) => setTimeout(r, 1000));
         }
       }
-      // Fallback: show success anyway
+
       setSuccess(true);
     }
   }

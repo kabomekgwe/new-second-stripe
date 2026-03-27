@@ -1,6 +1,7 @@
 import {
   Injectable,
   NotFoundException,
+  BadRequestException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
@@ -11,6 +12,15 @@ import { generateUniqueIdempotencyKey } from '../common/utils/idempotency';
 
 @Injectable()
 export class PaymentMethodsService {
+  private static readonly ACTIVE_SETUP_INTENT_STATUSES = new Set<
+    Stripe.SetupIntent.Status
+  >([
+    'requires_action',
+    'requires_confirmation',
+    'requires_payment_method',
+    'processing',
+  ]);
+
   constructor(
     @InjectRepository(PaymentMethod)
     private paymentMethodRepo: Repository<PaymentMethod>,
@@ -69,32 +79,22 @@ export class PaymentMethodsService {
   async createSetupIntent(
     userId: string,
   ): Promise<{ clientSecret: string }> {
-    let user = await this.findUserOrFail(userId);
+    const user = await this.ensureStripeCustomer(userId);
 
-    // Auto-create Stripe customer if missing
-    if (!user.stripeCustomerId) {
-      const idempotencyKey = generateUniqueIdempotencyKey(
-        'create_customer',
-        userId,
-      );
-      const customer = await this.stripeService.createCustomer(
-        {
-          email: user.email,
-          name: user.name ?? undefined,
-          metadata: { userId },
-        },
-        idempotencyKey,
-      );
-      user = await this.userRepo.save({
-        ...user,
-        stripeCustomerId: customer.id,
-      });
+    const existingSetupIntent = await this.findActiveSetupIntent(
+      user.stripeCustomerId!,
+    );
+    if (existingSetupIntent?.client_secret) {
+      return { clientSecret: existingSetupIntent.client_secret };
     }
 
+    const setupIntentWindow = String(
+      Math.floor(Date.now() / (15 * 60 * 1000)),
+    );
     const idempotencyKey = generateUniqueIdempotencyKey(
       'setup_intent',
       userId,
-      `${Date.now()}_${Math.random().toString(36).slice(2, 10)}`,
+      setupIntentWindow,
     );
 
     const setupIntent = await this.stripeService.createSetupIntent(
@@ -110,20 +110,15 @@ export class PaymentMethodsService {
     paymentMethodId: string,
   ): Promise<PaymentMethod> {
     const pm = await this.findPaymentMethodOrFail(paymentMethodId, userId);
+    const user = await this.findUserOrFail(userId);
 
-    await this.paymentMethodRepo.update(
-      { userId, isDefault: true },
-      { isDefault: false },
+    await this.updateLocalDefaultPaymentMethod(userId, pm.stripePaymentMethodId);
+    await this.syncStripeDefaultPaymentMethod(
+      user.stripeCustomerId,
+      pm.stripePaymentMethodId,
     );
 
-    pm.isDefault = true;
-    await this.paymentMethodRepo.save(pm);
-
-    await this.userRepo.update(userId, {
-      defaultPaymentMethodId: pm.stripePaymentMethodId,
-    });
-
-    return pm;
+    return this.findPaymentMethodOrFail(paymentMethodId, userId);
   }
 
   async removePaymentMethod(
@@ -131,6 +126,7 @@ export class PaymentMethodsService {
     paymentMethodId: string,
   ): Promise<void> {
     const pm = await this.findPaymentMethodOrFail(paymentMethodId, userId);
+    const user = await this.findUserOrFail(userId);
 
     const idempotencyKey = generateUniqueIdempotencyKey(
       'detach_pm',
@@ -143,9 +139,8 @@ export class PaymentMethodsService {
     );
 
     if (pm.isDefault) {
-      await this.userRepo.update(userId, {
-        defaultPaymentMethodId: null,
-      });
+      await this.updateLocalDefaultPaymentMethod(userId, null);
+      await this.syncStripeDefaultPaymentMethod(user.stripeCustomerId, null);
     }
 
     await this.paymentMethodRepo.remove(pm);
@@ -187,6 +182,82 @@ export class PaymentMethodsService {
       throw new NotFoundException('User not found');
     }
     return user;
+  }
+
+  private async ensureStripeCustomer(userId: string): Promise<User> {
+    const user = await this.findUserOrFail(userId);
+    if (user.stripeCustomerId) {
+      return user;
+    }
+
+    const idempotencyKey = generateUniqueIdempotencyKey(
+      'create_customer',
+      userId,
+    );
+    const customer = await this.stripeService.createCustomer(
+      {
+        email: user.email,
+        name: user.name ?? undefined,
+        metadata: { userId },
+      },
+      idempotencyKey,
+    );
+
+    return this.userRepo.save({
+      ...user,
+      stripeCustomerId: customer.id,
+    });
+  }
+
+  private async findActiveSetupIntent(
+    customerId: string,
+  ): Promise<Stripe.SetupIntent | null> {
+    const setupIntents = await this.stripeService.listSetupIntents(customerId);
+
+    return (
+      setupIntents.data.find((setupIntent) =>
+        PaymentMethodsService.ACTIVE_SETUP_INTENT_STATUSES.has(
+          setupIntent.status,
+        ),
+      ) ?? null
+    );
+  }
+
+  private async updateLocalDefaultPaymentMethod(
+    userId: string,
+    stripePaymentMethodId: string | null,
+  ): Promise<void> {
+    await this.paymentMethodRepo.update({ userId }, { isDefault: false });
+
+    if (stripePaymentMethodId) {
+      await this.paymentMethodRepo.update(
+        { userId, stripePaymentMethodId },
+        { isDefault: true },
+      );
+    }
+
+    await this.userRepo.update(userId, {
+      defaultPaymentMethodId: stripePaymentMethodId,
+    });
+  }
+
+  private async syncStripeDefaultPaymentMethod(
+    stripeCustomerId: string | null,
+    stripePaymentMethodId: string | null,
+  ): Promise<void> {
+    if (!stripeCustomerId) {
+      if (stripePaymentMethodId) {
+        throw new BadRequestException(
+          'User does not have a Stripe customer account',
+        );
+      }
+      return;
+    }
+
+    await this.stripeService.updateCustomerDefaultPaymentMethod(
+      stripeCustomerId,
+      stripePaymentMethodId,
+    );
   }
 
   private async findPaymentMethodOrFail(

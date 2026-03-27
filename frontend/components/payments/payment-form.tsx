@@ -161,6 +161,7 @@ function StepCheckout({
         options={{
           fetchClientSecret,
           onComplete: onSuccess,
+          
         }}
       >
         <EmbeddedCheckout />

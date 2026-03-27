@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Elements, PaymentElement, useStripe, useElements } from '@stripe/react-stripe-js';
 import { stripePromise } from '@/lib/stripe';
 import { useCreateSetupIntentMutation } from '@/lib/store/payment-methods-api';
@@ -17,23 +17,37 @@ export function AddPaymentMethodModal({ onClose, onSuccess }: AddPaymentMethodMo
   const [error, setError] = useState('');
   const [createSetupIntent] = useCreateSetupIntentMutation();
 
-  async function handleInit() {
-    setLoading(true);
-    setError('');
-    try {
-      const result = await createSetupIntent().unwrap();
-      setClientSecret(result.clientSecret);
-    } catch {
-      setError('Failed to initialize. Please try again.');
-    } finally {
-      setLoading(false);
-    }
-  }
+  useEffect(() => {
+    let isActive = true;
 
-  // Auto-init on mount
-  if (!clientSecret && !loading && !error) {
-    handleInit();
-  }
+    async function handleInit() {
+      setLoading(true);
+      setError('');
+
+      try {
+        const result = await createSetupIntent().unwrap();
+        if (isActive) {
+          setClientSecret(result.clientSecret);
+        }
+      } catch {
+        if (isActive) {
+          setError('Failed to initialize. Please try again.');
+        }
+      } finally {
+        if (isActive) {
+          setLoading(false);
+        }
+      }
+    }
+
+    if (!clientSecret && !loading && !error) {
+      void handleInit();
+    }
+
+    return () => {
+      isActive = false;
+    };
+  }, [clientSecret, createSetupIntent, error, loading]);
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50" role="dialog" aria-modal="true" aria-labelledby="add-pm-title">
@@ -88,7 +102,7 @@ function SetupForm({ onSuccess, onError }: { onSuccess: () => void; onError: (ms
     setSubmitting(true);
     onError('');
 
-    const { error } = await stripe.confirmSetup({
+    const { setupIntent, error } = await stripe.confirmSetup({
       elements,
       redirect: 'if_required',
       confirmParams: {
@@ -100,21 +114,28 @@ function SetupForm({ onSuccess, onError }: { onSuccess: () => void; onError: (ms
       onError(error.message || 'Setup failed. Please try again.');
       setSubmitting(false);
     } else {
-      // Poll for the payment method to appear (webhook may take a moment)
+      const setupPaymentMethodId =
+        typeof setupIntent?.payment_method === 'string'
+          ? setupIntent.payment_method
+          : setupIntent?.payment_method?.id ?? null;
+
       const maxAttempts = 6;
-      for (let i = 0; i < maxAttempts; i++) {
-        await new Promise((r) => setTimeout(r, 1000));
-        try {
-          const result = await lazyGetPaymentMethods().unwrap();
-          if (result.length > 0) {
-            onSuccess();
-            return;
+      if (setupPaymentMethodId) {
+        for (let i = 0; i < maxAttempts; i++) {
+          try {
+            const result = await lazyGetPaymentMethods().unwrap();
+            if (result.some((method) => method.stripePaymentMethodId === setupPaymentMethodId)) {
+              onSuccess();
+              return;
+            }
+          } catch {
+            // ignore polling errors
           }
-        } catch {
-          // ignore polling errors
+
+          await new Promise((r) => setTimeout(r, 1000));
         }
       }
-      // Fallback: call success anyway so UI updates
+
       onSuccess();
     }
   }

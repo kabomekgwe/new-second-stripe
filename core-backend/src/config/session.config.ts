@@ -1,6 +1,6 @@
 import { ConfigService } from '@nestjs/config';
 import { Redis } from 'ioredis';
-import RedisStore from 'connect-redis';
+import { RedisStore } from 'connect-redis';
 import * as session from 'express-session';
 
 export function getSessionConfig(configService: ConfigService) {

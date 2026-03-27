@@ -15,7 +15,36 @@ export class CheckoutSessionHandler {
 
   async handleCompleted(event: Stripe.Event): Promise<void> {
     const session = event.data.object as Stripe.Checkout.Session;
+    if (session.payment_status !== 'paid') {
+      await this.updatePaymentFromSession(session, null);
+      this.logger.log(
+        `Checkout session ${session.id} completed with payment_status=${session.payment_status}; keeping payment pending`,
+      );
+      return;
+    }
 
+    await this.updatePaymentFromSession(session, PaymentStatus.SUCCEEDED);
+  }
+
+  async handleAsyncSucceeded(event: Stripe.Event): Promise<void> {
+    const session = event.data.object as Stripe.Checkout.Session;
+    await this.updatePaymentFromSession(session, PaymentStatus.SUCCEEDED);
+  }
+
+  async handleAsyncFailed(event: Stripe.Event): Promise<void> {
+    const session = event.data.object as Stripe.Checkout.Session;
+    await this.updatePaymentFromSession(session, PaymentStatus.FAILED);
+  }
+
+  async handleExpired(event: Stripe.Event): Promise<void> {
+    const session = event.data.object as Stripe.Checkout.Session;
+    await this.updatePaymentFromSession(session, PaymentStatus.CANCELLED);
+  }
+
+  private async updatePaymentFromSession(
+    session: Stripe.Checkout.Session,
+    status: PaymentStatus | null,
+  ): Promise<void> {
     const payment = await this.paymentRepository.findOne({
       where: { stripeCheckoutSessionId: session.id },
     });
@@ -33,37 +62,14 @@ export class CheckoutSessionHandler {
         : session.payment_intent?.id ?? null;
 
     await this.paymentRepository.update(payment.id, {
-      status: PaymentStatus.SUCCEEDED,
+      ...(status ? { status } : {}),
       stripePaymentIntentId: paymentIntentId,
       amountUserCurrency: session.amount_total,
       userCurrency: session.currency?.toUpperCase() ?? null,
     });
 
     this.logger.log(
-      `Checkout session ${session.id} completed — payment ${payment.id} updated to succeeded`,
-    );
-  }
-
-  async handleExpired(event: Stripe.Event): Promise<void> {
-    const session = event.data.object as Stripe.Checkout.Session;
-
-    const payment = await this.paymentRepository.findOne({
-      where: { stripeCheckoutSessionId: session.id },
-    });
-
-    if (!payment) {
-      this.logger.debug(
-        `No payment record found for expired Checkout Session ${session.id}`,
-      );
-      return;
-    }
-
-    await this.paymentRepository.update(payment.id, {
-      status: PaymentStatus.CANCELLED,
-    });
-
-    this.logger.log(
-      `Checkout session ${session.id} expired — payment ${payment.id} cancelled`,
+      `Checkout session ${session.id} updated payment ${payment.id}${status ? ` to ${status}` : ''}`,
     );
   }
 }

@@ -33,7 +33,16 @@ export class PaymentMethodHandler {
       return;
     }
 
-    const pmData = {
+    const pmData: Pick<
+      PaymentMethod,
+      | 'userId'
+      | 'stripePaymentMethodId'
+      | 'type'
+      | 'last4'
+      | 'brand'
+      | 'expiryMonth'
+      | 'expiryYear'
+    > = {
       userId: user.id,
       stripePaymentMethodId: stripePm.id,
       type: stripePm.type,
@@ -47,19 +56,11 @@ export class PaymentMethodHandler {
       where: { stripePaymentMethodId: stripePm.id },
     });
 
-    if (existing) {
-      await this.paymentMethodRepository.update(existing.id, pmData);
-    } else {
-      await this.paymentMethodRepository.save(
-        this.paymentMethodRepository.create(pmData),
-      );
-    }
+    await this.upsertPaymentMethod(stripePm.id, pmData);
 
     // Set as default if user has no default payment method
     if (!user.defaultPaymentMethodId) {
-      await this.userRepository.update(user.id, {
-        defaultPaymentMethodId: stripePm.id,
-      });
+      await this.setDefaultPaymentMethod(user.id, stripePm.id);
     }
 
     this.logger.log(
@@ -98,5 +99,46 @@ export class PaymentMethodHandler {
     this.logger.log(
       `Removed detached payment method ${stripePm.id} for user ${userId}`,
     );
+  }
+
+  private async upsertPaymentMethod(
+    stripePaymentMethodId: string,
+    pmData: Pick<
+      PaymentMethod,
+      | 'userId'
+      | 'stripePaymentMethodId'
+      | 'type'
+      | 'last4'
+      | 'brand'
+      | 'expiryMonth'
+      | 'expiryYear'
+    >,
+  ): Promise<void> {
+    const existing = await this.paymentMethodRepository.findOne({
+      where: { stripePaymentMethodId },
+    });
+
+    if (existing) {
+      await this.paymentMethodRepository.update(existing.id, pmData);
+      return;
+    }
+
+    await this.paymentMethodRepository.save(
+      this.paymentMethodRepository.create(pmData),
+    );
+  }
+
+  private async setDefaultPaymentMethod(
+    userId: string,
+    stripePaymentMethodId: string,
+  ): Promise<void> {
+    await this.paymentMethodRepository.update({ userId }, { isDefault: false });
+    await this.paymentMethodRepository.update(
+      { userId, stripePaymentMethodId },
+      { isDefault: true },
+    );
+    await this.userRepository.update(userId, {
+      defaultPaymentMethodId: stripePaymentMethodId,
+    });
   }
 }

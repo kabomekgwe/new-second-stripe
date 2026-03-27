@@ -2,19 +2,35 @@ import { Injectable } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import Stripe from 'stripe';
 
+type FxQuoteResponse = {
+  id: string;
+  from_amount: number;
+  from_currencies?: string[];
+  to_amount: number;
+  to_currency: string;
+  expires_at?: string;
+};
+
 @Injectable()
 export class StripeService {
   private stripe: Stripe;
 
   constructor(private configService: ConfigService) {
+    const secretKey = this.configService.get<string>('STRIPE_SECRET_KEY', '');
+    const nodeEnv = this.configService.get<string>('NODE_ENV', 'development');
+
+    if (nodeEnv === 'production' && secretKey.endsWith('_xxx')) {
+      throw new Error('STRIPE_SECRET_KEY must be configured with a real value');
+    }
+
     this.stripe = new Stripe(
-      this.configService.get<string>('STRIPE_SECRET_KEY', ''),
+      secretKey,
       { apiVersion: '2026-02-25.clover' },
     );
   }
 
   async createCustomer(
-    params: any,
+    params: Stripe.CustomerCreateParams,
     idempotencyKey: string,
   ): Promise<Stripe.Customer> {
     return this.stripe.customers.create(params, {
@@ -57,9 +73,21 @@ export class StripeService {
       lock_duration: string;
     },
     idempotencyKey: string,
-  ): Promise<any> {
+  ): Promise<FxQuoteResponse> {
     // FxQuotes is a beta/preview Stripe API - use raw request
-    return (this.stripe as any).fxQuotes.create(
+    return (this.stripe as Stripe & {
+      fxQuotes: {
+        create(
+          params: {
+            from_currencies: string[];
+            to_currency: string;
+            from_amount: number;
+            lock_duration: string;
+          },
+          options: { idempotencyKey: string },
+        ): Promise<FxQuoteResponse>;
+      };
+    }).fxQuotes.create(
       {
         from_currencies: [params.from_currency],
         to_currency: params.to_currency,
@@ -96,6 +124,36 @@ export class StripeService {
     Stripe.ApiList<Stripe.PaymentMethodConfiguration>
   > {
     return this.stripe.paymentMethodConfigurations.list();
+  }
+
+  async updateCustomerDefaultPaymentMethod(
+    customerId: string,
+    paymentMethodId: string | null,
+  ): Promise<Stripe.Customer> {
+    const params =
+      paymentMethodId === null
+        ? ({
+            invoice_settings: {
+              default_payment_method: null,
+            },
+          } as unknown as Stripe.CustomerUpdateParams)
+        : ({
+            invoice_settings: {
+              default_payment_method: paymentMethodId,
+            },
+          } satisfies Stripe.CustomerUpdateParams);
+
+    return this.stripe.customers.update(customerId, params);
+  }
+
+  async listSetupIntents(
+    customerId: string,
+    limit = 10,
+  ): Promise<Stripe.ApiList<Stripe.SetupIntent>> {
+    return this.stripe.setupIntents.list({
+      customer: customerId,
+      limit,
+    });
   }
 
   constructWebhookEvent(

@@ -15,17 +15,24 @@ interface InvoiceEmailParams {
 @Injectable()
 export class EmailService {
   private readonly logger = new Logger(EmailService.name);
-  private readonly resend: Resend;
+  private readonly resend: Resend | null;
   private readonly fromEmail: string;
 
   constructor(private configService: ConfigService) {
-    this.resend = new Resend(
-      this.configService.getOrThrow<string>('RESEND_API_KEY'),
-    );
-    this.fromEmail = this.configService.getOrThrow<string>('RESEND_FROM_EMAIL');
+    const apiKey = this.configService.get<string>('RESEND_API_KEY');
+    this.resend = apiKey ? new Resend(apiKey) : null;
+    this.fromEmail = this.configService.get<string>('RESEND_FROM_EMAIL') || 'billing@yourdomain.com';
   }
 
   async sendInvoiceEmail(params: InvoiceEmailParams): Promise<void> {
+    // If Resend is not configured, log and return early
+    if (!this.resend) {
+      this.logger.warn(
+        `Resend not configured - skipping email for charge ${params.chargeId}`,
+      );
+      return;
+    }
+
     const amount = (params.amountPence / 100).toFixed(2);
     const periodStart = this.formatDate(params.periodStart);
     const periodEnd = this.formatDate(params.periodEnd);

@@ -1,3 +1,5 @@
+import { ChargeStatus, PaymentStatus } from './stripe.types';
+
 // Auth
 export interface RegisterRequest {
   email: string;
@@ -86,7 +88,7 @@ export interface PaymentResponse {
   amountGbp: number;
   amountUserCurrency: number | null;
   userCurrency: string | null;
-  status: string;
+  status: PaymentStatus;
   createdAt: string;
 }
 
@@ -97,7 +99,7 @@ export interface UsageChargeResponse {
   description: string | null;
   billingPeriodStart: string;
   billingPeriodEnd: string;
-  status: string;
+  status: ChargeStatus;
   stripePaymentIntentId: string | null;
   createdAt: string;
 }

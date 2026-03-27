@@ -12,6 +12,12 @@ export enum ChargeStatus {
   FAILED = 'failed',
 }
 
+export enum WebhookEventStatus {
+  PROCESSING = 'processing',
+  PROCESSED = 'processed',
+  FAILED = 'failed',
+}
+
 export enum PaymentMethodType {
   CARD = 'card',
   BACS_DEBIT = 'bacs_debit',
@@ -52,4 +58,8 @@ export const STRIPE_WEBHOOK_EVENTS = {
   PAYMENT_METHOD_DETACHED: 'payment_method.detached',
   CHECKOUT_SESSION_COMPLETED: 'checkout.session.completed',
   CHECKOUT_SESSION_EXPIRED: 'checkout.session.expired',
+  CHECKOUT_SESSION_ASYNC_PAYMENT_SUCCEEDED:
+    'checkout.session.async_payment_succeeded',
+  CHECKOUT_SESSION_ASYNC_PAYMENT_FAILED:
+    'checkout.session.async_payment_failed',
 } as const;

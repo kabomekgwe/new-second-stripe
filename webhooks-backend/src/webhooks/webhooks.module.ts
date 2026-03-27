@@ -5,6 +5,7 @@ import {
   PaymentMethod,
   Payment,
   UsageCharge,
+  WebhookEvent,
 } from '@stripe-app/shared';
 import { WebhooksController } from './webhooks.controller';
 import { WebhooksService } from './webhooks.service';
@@ -16,7 +17,13 @@ import { EmailModule } from '../email/email.module';
 
 @Module({
   imports: [
-    TypeOrmModule.forFeature([User, PaymentMethod, Payment, UsageCharge]),
+    TypeOrmModule.forFeature([
+      User,
+      PaymentMethod,
+      Payment,
+      UsageCharge,
+      WebhookEvent,
+    ]),
     EmailModule,
   ],
   controllers: [WebhooksController],

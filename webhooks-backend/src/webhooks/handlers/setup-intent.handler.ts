@@ -76,6 +76,11 @@ export class SetupIntentHandler {
 
     // Set as default if user has no default payment method
     if (!user.defaultPaymentMethodId) {
+      await this.paymentMethodRepository.update({ userId: user.id }, { isDefault: false });
+      await this.paymentMethodRepository.update(
+        { userId: user.id, stripePaymentMethodId: stripePm.id },
+        { isDefault: true },
+      );
       await this.userRepository.update(user.id, {
         defaultPaymentMethodId: stripePm.id,
       });

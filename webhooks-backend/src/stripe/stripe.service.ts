@@ -7,8 +7,15 @@ export class StripeService {
   private readonly stripe: Stripe;
 
   constructor(private configService: ConfigService) {
+    const secretKey = this.configService.getOrThrow<string>('STRIPE_SECRET_KEY');
+    const nodeEnv = this.configService.get<string>('NODE_ENV', 'development');
+
+    if (nodeEnv === 'production' && secretKey.endsWith('_xxx')) {
+      throw new Error('STRIPE_SECRET_KEY must be configured with a real value');
+    }
+
     this.stripe = new Stripe(
-      this.configService.getOrThrow<string>('STRIPE_SECRET_KEY'),
+      secretKey,
       { apiVersion: '2026-02-25.clover' },
     );
   }
