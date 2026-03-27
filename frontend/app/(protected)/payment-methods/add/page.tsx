@@ -6,6 +6,7 @@ import { stripePromise } from '@/lib/stripe';
 import { useCreateSetupIntentMutation } from '@/lib/store/payment-methods-api';
 import { paymentMethodsApi } from '@/lib/store/payment-methods-api';
 import Link from 'next/link';
+import { StripePaymentElementOptions } from '@stripe/stripe-js';
 
 export default function AddPaymentMethodPage() {
   const [clientSecret, setClientSecret] = useState<string | null>(null);
@@ -82,6 +83,7 @@ function SetupForm() {
   const [success, setSuccess] = useState(false);
   const [lazyGetPaymentMethods] = paymentMethodsApi.endpoints.getPaymentMethods.useLazyQuery();
 
+
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     if (!stripe || !elements) return;
@@ -96,6 +98,8 @@ function SetupForm() {
         return_url: `${window.location.origin}/payment-methods`,
       },
     });
+
+
 
     if (error) {
       setError(error.message || 'Setup failed. Please try again.');
@@ -136,9 +140,36 @@ function SetupForm() {
     );
   }
 
+  const paymentOptions: StripePaymentElementOptions = {
+    layout: {
+      type: 'tabs',
+      defaultCollapsed: false,
+    },
+
+    fields: {
+      billingDetails: {
+        name: 'auto', // Changed from 'never' to 'auto' to collect billing name
+        email: 'never',
+        phone: 'never',
+        address: 'never',
+      },
+    },
+
+    paymentMethodOrder: ['card', 'apple_pay'],
+
+    wallets: {
+      applePay: 'auto',
+      googlePay: 'auto',
+    },
+
+    terms: {
+      card: 'never',
+    },
+  };
+
   return (
     <form onSubmit={handleSubmit} className="mt-6 space-y-4">
-      <PaymentElement />
+      <PaymentElement options={paymentOptions} />
       {error && (
         <div className="rounded-md bg-red-50 px-4 py-3 text-sm text-red-700">{error}</div>
       )}
