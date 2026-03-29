@@ -8,6 +8,7 @@ import { PaymentMethodsModule } from './payment-methods/payment-methods.module';
 import { PaymentsModule } from './payments/payments.module';
 import { BillingModule } from './billing/billing.module';
 import { DatabaseModule } from './database/database.module';
+import { CsrfModule } from './csrf/csrf.module';
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
 
@@ -21,6 +22,7 @@ import { AppService } from './app.service';
     PaymentMethodsModule,
     PaymentsModule,
     BillingModule,
+    CsrfModule,
   ],
   controllers: [AppController],
   providers: [

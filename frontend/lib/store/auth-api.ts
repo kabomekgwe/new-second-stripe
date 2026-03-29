@@ -6,6 +6,8 @@ export const authApi = apiSlice.injectEndpoints({
     getMe: builder.query<UserResponse, void>({
       query: () => '/auth/me',
       providesTags: ['User'],
+      // Keep data for 5 minutes to reduce refetches
+      keepUnusedDataFor: 300,
     }),
     login: builder.mutation<UserResponse, LoginRequest>({
       query: (body) => ({ url: '/auth/login', method: 'POST', body }),

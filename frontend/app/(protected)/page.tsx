@@ -1,9 +1,9 @@
 'use client';
 
-import { useGetMeQuery } from '@/lib/store/auth-api';
+import { useAuth } from './layout';
 
 export default function DashboardPage() {
-  const { data: user } = useGetMeQuery();
+  const user = useAuth();
 
   return (
     <div>
