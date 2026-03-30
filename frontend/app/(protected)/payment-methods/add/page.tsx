@@ -3,8 +3,8 @@
 import { useState, useEffect, useCallback } from 'react';
 import { Elements, PaymentElement, useStripe, useElements } from '@stripe/react-stripe-js';
 import { stripePromise } from '@/lib/stripe';
-import { useCreateSetupIntentMutation } from '@/lib/store/payment-methods-api';
-import { paymentMethodsApi } from '@/lib/store/payment-methods-api';
+import { useCreateSetupIntentMutation, useSyncPaymentMethodMutation } from '@/lib/store/payment-methods-api';
+import { useGetMeQuery } from '@/lib/store/auth-api';
 import Link from 'next/link';
 import { StripePaymentElementOptions } from '@stripe/stripe-js';
 
@@ -13,6 +13,7 @@ export default function AddPaymentMethodPage() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [createSetupIntent] = useCreateSetupIntentMutation();
+  const { data: user } = useGetMeQuery();
 
   const handleInit = useCallback(async () => {
     setLoading(true);
@@ -59,7 +60,7 @@ export default function AddPaymentMethodPage() {
           <div className="mt-6 text-center text-sm text-gray-500">Loading available payment methods...</div>
         )}
 
-        {clientSecret && (
+        {clientSecret && user && (
           <Elements
             stripe={stripePromise}
             options={{
@@ -67,7 +68,7 @@ export default function AddPaymentMethodPage() {
               appearance: { theme: 'stripe' },
             }}
           >
-            <SetupForm />
+            <SetupForm userEmail={user.email} userName={user.name ?? undefined} />
           </Elements>
         )}
       </div>
@@ -75,13 +76,18 @@ export default function AddPaymentMethodPage() {
   );
 }
 
-function SetupForm() {
+interface SetupFormProps {
+  userEmail: string;
+  userName?: string;
+}
+
+function SetupForm({ userEmail, userName }: SetupFormProps) {
   const stripe = useStripe();
   const elements = useElements();
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState(false);
-  const [lazyGetPaymentMethods] = paymentMethodsApi.endpoints.getPaymentMethods.useLazyQuery();
+  const [syncPaymentMethod] = useSyncPaymentMethodMutation();
 
 
   async function handleSubmit(e: React.FormEvent) {
@@ -96,10 +102,14 @@ function SetupForm() {
       redirect: 'if_required',
       confirmParams: {
         return_url: `${window.location.origin}/payment-methods`,
+        payment_method_data: {
+          billing_details: {
+            email: userEmail,
+            name: userName,
+          },
+        },
       },
     });
-
-
 
     if (error) {
       setError(error.message || 'Setup failed. Please try again.');
@@ -110,28 +120,20 @@ function SetupForm() {
           ? setupIntent.payment_method
           : setupIntent?.payment_method?.id ?? null;
 
-      const maxAttempts = 6;
       if (setupPaymentMethodId) {
-        for (let i = 0; i < maxAttempts; i++) {
-          try {
-            const result = await lazyGetPaymentMethods().unwrap();
-            if (
-              result.some(
-                (method) => method.stripePaymentMethodId === setupPaymentMethodId,
-              )
-            ) {
-              setSuccess(true);
-              return;
-            }
-          } catch {
-            // ignore polling errors
-          }
-
-          await new Promise((r) => setTimeout(r, 1000));
+        // Immediately sync the payment method to the database
+        // This ensures the payment method is available without waiting for webhooks
+        try {
+          await syncPaymentMethod(setupPaymentMethodId).unwrap();
+          setSuccess(true);
+        } catch {
+          // If sync fails, the webhook will eventually process it
+          // Show success anyway - the payment method was added to Stripe
+          setSuccess(true);
         }
+      } else {
+        setSuccess(true);
       }
-
-      setSuccess(true);
     }
   }
 
@@ -159,10 +161,10 @@ function SetupForm() {
 
     fields: {
       billingDetails: {
-        name: 'auto', // Changed from 'never' to 'auto' to collect billing name
-        email: 'never',
-        phone: 'never',
-        address: 'never',
+        name: 'auto',
+        email: 'never', // We pass email from user account in confirmParams
+        phone: 'auto', // We don't have phone, let Stripe collect if needed
+        address: 'auto', // We don't have address, let Stripe collect if needed
       },
     },
 

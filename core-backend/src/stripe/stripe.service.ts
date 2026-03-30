@@ -111,6 +111,12 @@ export class StripeService {
     return this.stripe.paymentMethods.list({ customer: customerId });
   }
 
+  async retrievePaymentMethod(
+    paymentMethodId: string,
+  ): Promise<Stripe.PaymentMethod> {
+    return this.stripe.paymentMethods.retrieve(paymentMethodId);
+  }
+
   async detachPaymentMethod(
     paymentMethodId: string,
     idempotencyKey: string,

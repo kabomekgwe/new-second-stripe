@@ -35,7 +35,9 @@ const baseQueryWithAuth: BaseQueryFn<string | FetchArgs, unknown, FetchBaseQuery
   extraOptions,
 ) => {
   // For mutation requests (POST, PUT, DELETE, PATCH), ensure we have a CSRF token
-  if (typeof args === 'object' && args.body && ['POST', 'PUT', 'DELETE', 'PATCH'].includes(args.method || 'POST')) {
+  // Note: Check method regardless of body - some mutations (like createSetupIntent) have no body
+  const isMutation = typeof args === 'object' && ['POST', 'PUT', 'DELETE', 'PATCH'].includes(args.method || 'POST');
+  if (isMutation) {
     if (!csrfToken) {
       try {
         await fetchCsrfToken();
@@ -59,7 +61,7 @@ const baseQueryWithAuth: BaseQueryFn<string | FetchArgs, unknown, FetchBaseQuery
     csrfToken = null;
     try {
       await fetchCsrfToken();
-      if (csrfToken && typeof args === 'object' && args.body) {
+      if (csrfToken && typeof args === 'object') {
         args.headers = {
           ...args.headers,
           'x-csrf-token': csrfToken,

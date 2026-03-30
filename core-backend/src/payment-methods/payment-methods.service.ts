@@ -210,6 +210,47 @@ export class PaymentMethodsService {
     });
   }
 
+  /**
+   * Fetches a payment method from Stripe by ID and saves it to the database.
+   * Called by frontend after successful setup to ensure immediate availability.
+   */
+  async syncAndSavePaymentMethod(
+    userId: string,
+    stripePaymentMethodId: string,
+  ): Promise<PaymentMethod> {
+    const user = await this.ensureStripeCustomer(userId);
+
+    // Fetch the payment method from Stripe
+    const stripePm = await this.stripeService.retrievePaymentMethod(
+      stripePaymentMethodId,
+    );
+
+    // Save to database
+    const savedPm = await this.paymentMethodsSql.upsertFromStripe({
+      userId,
+      stripePaymentMethodId: stripePm.id,
+      type: stripePm.type,
+      last4: stripePm.card?.last4 ?? null,
+      brand: stripePm.card?.brand ?? null,
+      expiryMonth: stripePm.card?.exp_month ?? null,
+      expiryYear: stripePm.card?.exp_year ?? null,
+      metadata: stripePm.metadata ?? null,
+      isDefault: user.defaultPaymentMethodId === stripePm.id,
+    });
+
+    // Set as default if this is the user's first payment method
+    if (!user.defaultPaymentMethodId) {
+      await this.paymentMethodsSql.setDefault(userId, stripePm.id);
+      await this.usersSql.updateDefaultPaymentMethod(userId, stripePm.id);
+      await this.syncStripeDefaultPaymentMethod(
+        user.stripeCustomerId,
+        stripePm.id,
+      );
+    }
+
+    return savedPm;
+  }
+
   private async findUserOrFail(userId: string): Promise<User> {
     const user = await this.usersSql.findById(userId);
     if (!user) {

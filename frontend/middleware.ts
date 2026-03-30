@@ -25,8 +25,8 @@ export function middleware(request: NextRequest) {
     return NextResponse.next();
   }
 
-  // Check for session cookie (default connect.sid for express-session)
-  const sessionCookie = request.cookies.get('connect.sid');
+  // Check for session cookie (custom name from session.config.ts)
+  const sessionCookie = request.cookies.get('stripe-app.session');
 
   if (!sessionCookie) {
     // No session cookie - redirect to login with return path

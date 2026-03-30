@@ -4,6 +4,7 @@ import {
   Post,
   Delete,
   Param,
+  Body,
   UseGuards,
   Req,
 } from '@nestjs/common';
@@ -11,6 +12,10 @@ import { Request } from 'express';
 import { User } from '@stripe-app/shared';
 import { AuthenticatedGuard } from '../auth/guards/authenticated.guard';
 import { PaymentMethodsService } from './payment-methods.service';
+
+class SyncPaymentMethodDto {
+  stripePaymentMethodId!: string;
+}
 
 @Controller('payment-methods')
 @UseGuards(AuthenticatedGuard)
@@ -33,6 +38,17 @@ export class PaymentMethodsController {
   createSetupIntent(@Req() req: Request) {
     return this.paymentMethodsService.createSetupIntent(
       (req.user as User).id,
+    );
+  }
+
+  @Post('sync')
+  async syncPaymentMethod(
+    @Req() req: Request,
+    @Body() body: SyncPaymentMethodDto,
+  ) {
+    return this.paymentMethodsService.syncAndSavePaymentMethod(
+      (req.user as User).id,
+      body.stripePaymentMethodId,
     );
   }
 

@@ -85,6 +85,18 @@ export const SQL_MIGRATIONS: SqlMigration[] = [
 
       CREATE INDEX IF NOT EXISTS usage_charges_user_id_idx
         ON usage_charges ("userId");
+
+      -- Add missing columns before creating index (idempotent)
+      ALTER TABLE usage_charges
+        ADD COLUMN IF NOT EXISTS "stripeSubscriptionId" varchar;
+      ALTER TABLE usage_charges
+        ADD COLUMN IF NOT EXISTS "stripeSubscriptionItemId" varchar;
+      ALTER TABLE usage_charges
+        ADD COLUMN IF NOT EXISTS "stripeInvoiceId" varchar;
+      ALTER TABLE usage_charges
+        ADD COLUMN IF NOT EXISTS "usageReportedAt" timestamptz;
+
+      -- Create index after columns are guaranteed to exist
       CREATE INDEX IF NOT EXISTS usage_charges_subscription_idx
         ON usage_charges ("stripeSubscriptionId", "stripeSubscriptionItemId");
 
@@ -115,15 +127,6 @@ export const SQL_MIGRATIONS: SqlMigration[] = [
         "createdAt" timestamptz NOT NULL DEFAULT now(),
         "updatedAt" timestamptz NOT NULL DEFAULT now()
       );
-
-      ALTER TABLE usage_charges
-        ADD COLUMN IF NOT EXISTS "stripeSubscriptionId" varchar;
-      ALTER TABLE usage_charges
-        ADD COLUMN IF NOT EXISTS "stripeSubscriptionItemId" varchar;
-      ALTER TABLE usage_charges
-        ADD COLUMN IF NOT EXISTS "stripeInvoiceId" varchar;
-      ALTER TABLE usage_charges
-        ADD COLUMN IF NOT EXISTS "usageReportedAt" timestamptz;
     `,
   },
 ];

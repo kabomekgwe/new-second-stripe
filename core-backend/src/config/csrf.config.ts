@@ -9,13 +9,22 @@ import { Request, Response } from 'express';
 export function getCsrfConfig(configService: ConfigService) {
   const isProduction = configService.get('NODE_ENV') === 'production';
 
+  // Use __Host- prefix only in production (requires HTTPS + Secure)
+  // In development, use a regular cookie name
+  const cookieName = isProduction ? '__Host-x-csrf-token' : 'x-csrf-token';
+
   const csrfUtilities = doubleCsrf({
     getSecret: () => configService.getOrThrow<string>('SESSION_SECRET'),
     getSessionIdentifier: (req: Request) => {
+      // In development, use a stable identifier to avoid session issues
+      // In production, use session ID for proper per-session tokens
+      if (!isProduction) {
+        return 'development-session';
+      }
       // Use session ID if available, otherwise fall back to IP
       return req.sessionID || req.ip || 'anonymous';
     },
-    cookieName: '__Host-x-csrf-token',
+    cookieName,
     cookieOptions: {
       sameSite: isProduction ? 'strict' : 'lax',
       path: '/',
@@ -25,6 +34,10 @@ export function getCsrfConfig(configService: ConfigService) {
     },
     size: 64,
     ignoredMethods: ['GET', 'HEAD', 'OPTIONS'],
+    // Skip CSRF protection for the token endpoint itself
+    skipCsrfProtection: (req: Request) => {
+      return req.path === '/csrf/token';
+    },
     getCsrfTokenFromRequest: (req: Request) => {
       // Check header first, then body, then query
       return (

@@ -18,6 +18,14 @@ export const paymentMethodsApi = apiSlice.injectEndpoints({
     createSetupIntent: builder.mutation<SetupIntentResponse, void>({
       query: () => ({ url: '/payment-methods/setup-intent', method: 'POST' }),
     }),
+    syncPaymentMethod: builder.mutation<PaymentMethodResponse, string>({
+      query: (stripePaymentMethodId) => ({
+        url: '/payment-methods/sync',
+        method: 'POST',
+        body: { stripePaymentMethodId },
+      }),
+      invalidatesTags: ['PaymentMethods'],
+    }),
     setDefaultMethod: builder.mutation<void, string>({
       query: (id) => ({ url: `/payment-methods/${id}/default`, method: 'POST' }),
       invalidatesTags: ['PaymentMethods'],
@@ -33,6 +41,7 @@ export const {
   useGetPaymentMethodsQuery,
   useGetAvailableMethodTypesQuery,
   useCreateSetupIntentMutation,
+  useSyncPaymentMethodMutation,
   useSetDefaultMethodMutation,
   useDeleteMethodMutation,
 } = paymentMethodsApi;

@@ -30,6 +30,10 @@ export default function ProtectedLayout({ children }: { children: React.ReactNod
   const { data: user, isLoading, isError, error } = useGetMeQuery();
   const [logout] = useLogoutMutation();
 
+  // Memoize the context value to prevent unnecessary re-renders
+  // MUST be called before any conditional returns (Rules of Hooks)
+  const contextValue = useMemo(() => user ?? null, [user]);
+
   useEffect(() => {
     if (isError) {
       // Log error for debugging
@@ -47,6 +51,7 @@ export default function ProtectedLayout({ children }: { children: React.ReactNod
   }
 
   // Show loading only on initial load, not on every navigation
+  // Early returns MUST come AFTER all hooks (Rules of Hooks)
   if (isLoading && !user) {
     return (
       <div className="flex min-h-screen items-center justify-center bg-gray-50">
@@ -57,9 +62,6 @@ export default function ProtectedLayout({ children }: { children: React.ReactNod
 
   // If there's an error but we have cached user data, show it (will redirect in useEffect)
   if (!user) return null;
-
-  // Memoize the context value to prevent unnecessary re-renders
-  const contextValue = useMemo(() => user, [user]);
 
   return (
     <AuthContext.Provider value={contextValue}>

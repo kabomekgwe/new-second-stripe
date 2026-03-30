@@ -5,6 +5,7 @@ import { AppModule } from './app.module';
 import { getSessionConfig } from './config/session.config';
 import { getCsrfConfig } from './config/csrf.config';
 import * as passport from 'passport';
+import * as cookieParser from 'cookie-parser';
 import { StripeExceptionFilter } from './common/filters/stripe-exception.filter';
 import { GlobalExceptionFilter } from './common/filters/http-exception.filter';
 import { LoggingInterceptor } from './common/interceptors/logging.interceptor';
@@ -24,6 +25,9 @@ async function bootstrap() {
     new ClassSerializerInterceptor(app.get(Reflector)),
     new LoggingInterceptor(),
   );
+
+  // Cookie parser must come before session and CSRF
+  app.use(cookieParser());
 
   // Session middleware must come before passport and CSRF
   app.use(getSessionConfig(configService));
