@@ -103,11 +103,11 @@ export class PaymentsService {
         amount: dto.amountGbp,
         customer: user.stripeCustomerId,
         payment_method: dto.paymentMethodId,
+        confirm: true,
         automatic_payment_methods: {
           enabled: true,
           allow_redirects: 'never',
         },
-        usage: 'off_session',
         metadata: { userId, type: 'user_payment' },
         ...(dto.fxQuoteId ? { fx_quote: dto.fxQuoteId } : {}),
       } as never,

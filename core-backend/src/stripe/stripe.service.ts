@@ -74,28 +74,15 @@ export class StripeService {
     },
     idempotencyKey: string,
   ): Promise<FxQuoteResponse> {
-    // FxQuotes is a beta/preview Stripe API - use raw request
-    return (this.stripe as Stripe & {
-      fxQuotes: {
-        create(
-          params: {
-            from_currencies: string[];
-            to_currency: string;
-            from_amount: number;
-            lock_duration: string;
-          },
-          options: { idempotencyKey: string },
-        ): Promise<FxQuoteResponse>;
-      };
-    }).fxQuotes.create(
-      {
-        from_currencies: [params.from_currency],
-        to_currency: params.to_currency,
-        from_amount: params.from_amount,
-        lock_duration: params.lock_duration,
-      },
-      { idempotencyKey },
-    );
+    // FxQuotes is a beta/preview Stripe API — use rawRequest
+    const response = await this.stripe.rawRequest('POST', '/v1/fx_quotes', {
+      'from_currencies[]': [params.from_currency],
+      to_currency: params.to_currency,
+      from_amount: params.from_amount,
+      lock_duration: params.lock_duration,
+    }, { idempotencyKey });
+
+    return response as unknown as FxQuoteResponse;
   }
 
   async createCheckoutSession(

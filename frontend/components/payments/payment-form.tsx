@@ -1,12 +1,10 @@
 'use client';
 
 import Link from 'next/link';
-import { useState, useCallback, useEffect, useMemo } from 'react';
-import { EmbeddedCheckoutProvider, EmbeddedCheckout } from '@stripe/react-stripe-js';
+import { useState, useEffect, useMemo } from 'react';
 import type { FxQuoteResponse, PaymentMethodResponse } from '@stripe-app/shared';
-import { stripePromise } from '@/lib/stripe';
 import {
-  useCreateCheckoutSessionMutation,
+  useCreatePaymentIntentMutation,
   useGetFxQuoteMutation,
 } from '@/lib/store/payments-api';
 import {
@@ -328,10 +326,11 @@ function StepMethod({
   );
 }
 
-function StepCheckout({
+function StepConfirmPay({
   amountGbp,
   quote,
   selectedMethod,
+  fxQuoteId,
   onBack,
   onSuccess,
   onError,
@@ -339,32 +338,38 @@ function StepCheckout({
   amountGbp: number;
   quote: FxQuoteResponse | null;
   selectedMethod: PaymentMethodResponse | null;
+  fxQuoteId: string | undefined;
   onBack: () => void;
   onSuccess: () => void;
   onError: (msg: string) => void;
 }) {
-  const [createCheckoutSession] = useCreateCheckoutSessionMutation();
+  const [createPaymentIntent, { isLoading }] = useCreatePaymentIntentMutation();
 
-  const fetchClientSecret = useCallback(async () => {
+  const handleConfirm = async () => {
+    if (!selectedMethod) return;
+
     try {
-      const result = await createCheckoutSession({ amountGbp }).unwrap();
-      return result.clientSecret;
+      await createPaymentIntent({
+        amountGbp,
+        paymentMethodId: selectedMethod.stripePaymentMethodId,
+        ...(fxQuoteId ? { fxQuoteId } : {}),
+      }).unwrap();
+      onSuccess();
     } catch (err: unknown) {
       const message =
         err && typeof err === 'object' && 'data' in err
           ? String((err as { data: { message?: string } }).data?.message || 'Payment failed')
           : 'Something went wrong. Please try again.';
       onError(message);
-      throw err;
     }
-  }, [createCheckoutSession, amountGbp, onError]);
+  };
 
   return (
     <div className="space-y-6">
       <div>
         <h2 className="text-lg font-medium text-gray-900">Review and Pay</h2>
         <p className="mt-1 text-sm text-gray-500">
-          Confirm the details below, then complete the payment inside the embedded Stripe checkout.
+          Confirm the details below and complete the payment.
         </p>
       </div>
 
@@ -375,19 +380,24 @@ function StepCheckout({
             &pound;{formatPence(amountGbp)}
           </span>
         </div>
-        <div className="mt-3 flex items-center justify-between">
-          <span className="text-sm text-slate-600">Estimated local amount</span>
-          <span className="text-base font-semibold text-slate-950">
-            {quote
-              ? formatCurrency(quote.toAmount, quote.toCurrency)
-              : 'Shown at checkout'}
-          </span>
-        </div>
+        {quote && quote.toCurrency.toLowerCase() !== 'gbp' && (
+          <div className="mt-3 flex items-center justify-between">
+            <span className="text-sm text-slate-600">Estimated local amount</span>
+            <span className="text-base font-semibold text-slate-950">
+              {formatCurrency(quote.toAmount, quote.toCurrency)}
+            </span>
+          </div>
+        )}
         <div className="mt-3 flex items-start justify-between gap-4">
-          <span className="text-sm text-slate-600">Preferred payment method</span>
+          <span className="text-sm text-slate-600">Payment method</span>
           <div className="text-right">
-            <div className="text-sm font-semibold text-slate-950">
-              {selectedMethod ? getMethodLabel(selectedMethod) : 'Stripe will use your default method'}
+            <div className="flex items-center gap-2 justify-end">
+              {selectedMethod && (
+                <PaymentMethodIcon type={selectedMethod.type} brand={selectedMethod.brand} />
+              )}
+              <span className="text-sm font-semibold text-slate-950">
+                {selectedMethod ? getMethodLabel(selectedMethod) : 'No method selected'}
+              </span>
             </div>
             {selectedMethod?.expiryMonth && selectedMethod.expiryYear ? (
               <div className="text-xs text-slate-500">
@@ -398,20 +408,18 @@ function StepCheckout({
         </div>
       </div>
 
-      <EmbeddedCheckoutProvider
-        key={`${amountGbp}-${selectedMethod?.stripePaymentMethodId ?? 'default'}`}
-        stripe={stripePromise}
-        options={{
-          fetchClientSecret,
-          onComplete: onSuccess,
-        }}
+      <button
+        onClick={handleConfirm}
+        disabled={isLoading || !selectedMethod}
+        className="w-full rounded-xl bg-slate-950 px-4 py-3 text-sm font-medium text-white transition-colors hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-50"
       >
-        <EmbeddedCheckout />
-      </EmbeddedCheckoutProvider>
+        {isLoading ? 'Processing...' : `Pay \u00A3${formatPence(amountGbp)}`}
+      </button>
 
       <button
         onClick={onBack}
-        className="w-full rounded-xl border border-slate-300 px-4 py-3 text-sm font-medium text-slate-700 transition-colors hover:bg-slate-50"
+        disabled={isLoading}
+        className="w-full rounded-xl border border-slate-300 px-4 py-3 text-sm font-medium text-slate-700 transition-colors hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
       >
         Back
       </button>
@@ -551,10 +559,11 @@ export function PaymentForm() {
         )}
 
         {step === 'checkout' && (
-          <StepCheckout
+          <StepConfirmPay
             amountGbp={amountGbp}
             quote={fxQuote}
             selectedMethod={selectedMethod}
+            fxQuoteId={fxQuote?.quoteId || undefined}
             onBack={() => setStep('method')}
             onSuccess={() => setStep('success')}
             onError={(msg) => {

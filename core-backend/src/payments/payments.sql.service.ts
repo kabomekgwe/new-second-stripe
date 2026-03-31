@@ -26,6 +26,7 @@ export class PaymentsSqlService {
         "idempotencyKey",
         metadata
       ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)
+      ON CONFLICT ("idempotencyKey") DO NOTHING
       RETURNING *`,
       [
         randomUUID(),
@@ -42,6 +43,15 @@ export class PaymentsSqlService {
         data.metadata ?? null,
       ],
     );
+
+    // If conflict hit (duplicate idempotencyKey), fetch the existing record
+    if (result.rows.length === 0) {
+      const existing = await this.database.query(
+        'SELECT * FROM payments WHERE "idempotencyKey" = $1 LIMIT 1',
+        [data.idempotencyKey],
+      );
+      return mapPayment(existing.rows[0]);
+    }
 
     return mapPayment(result.rows[0]);
   }
