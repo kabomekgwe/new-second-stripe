@@ -9,7 +9,7 @@ import {
   useDeleteMethodMutation,
 } from '@/lib/store/payment-methods-api';
 import { PaymentMethodCard } from './payment-method-card';
-import { PaymentMethodIcon } from './payment-method-icon';
+import { AvailableTypesGrid } from './available-types-grid';
 
 export function PaymentMethodsList() {
   const { data: savedMethods, isLoading: methodsLoading, isError: methodsError } = useGetPaymentMethodsQuery();
@@ -79,23 +79,7 @@ export function PaymentMethodsList() {
       </section>
 
       {/* Available Payment Method Types */}
-      <section>
-        <h2 className="text-lg font-medium text-gray-900">Available Payment Methods</h2>
-        <p className="mt-1 text-sm text-gray-500">
-          Payment methods enabled on this account.
-        </p>
-        <div className="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
-          {(availableTypes || []).map((pm) => (
-            <div
-              key={pm.type}
-              className="flex items-center gap-3 rounded-lg border border-gray-200 bg-white px-4 py-3"
-            >
-              <PaymentMethodIcon type={pm.type} size={32} className="flex-shrink-0" />
-              <span className="text-sm font-medium text-gray-700">{pm.label}</span>
-            </div>
-          ))}
-        </div>
-      </section>
+      <AvailableTypesGrid types={availableTypes || []} />
     </div>
   );
 }
