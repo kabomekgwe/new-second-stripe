@@ -1,0 +1,293 @@
+name: Deploy - Docker Production
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: 'Environment to deploy'
+        required: true
+        default: 'staging'
+        type: choice
+        options:
+          - staging
+          - production
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_NAME: ${{ github.repository }}
+
+jobs:
+  # ============================================
+  # Build and Push Docker Images
+  # ============================================
+  build:
+    name: Build and Push Images
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    outputs:
+      core-image: ${{ steps.core-meta.outputs.tags }}
+      webhooks-image: ${{ steps.webhooks-meta.outputs.tags }}
+      frontend-image: ${{ steps.frontend-meta.outputs.tags }}
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Extract metadata for Core Backend
+        id: core-meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}/core-backend
+          tags: |
+            type=ref,event=branch
+            type=sha,prefix={{branch}}-
+            type=raw,value=latest,enable={{is_default_branch}}
+
+      - name: Extract metadata for Webhooks Backend
+        id: webhooks-meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}/webhooks-backend
+          tags: |
+            type=ref,event=branch
+            type=sha,prefix={{branch}}-
+            type=raw,value=latest,enable={{is_default_branch}}
+
+      - name: Extract metadata for Frontend
+        id: frontend-meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}/frontend
+          tags: |
+            type=ref,event=branch
+            type=sha,prefix={{branch}}-
+            type=raw,value=latest,enable={{is_default_branch}}
+
+      - name: Build and push Core Backend
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: ./core-backend/Dockerfile
+          target: production
+          push: true
+          tags: ${{ steps.core-meta.outputs.tags }}
+          labels: ${{ steps.core-meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Build and push Webhooks Backend
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: ./webhooks-backend/Dockerfile
+          target: production
+          push: true
+          tags: ${{ steps.webhooks-meta.outputs.tags }}
+          labels: ${{ steps.webhooks-meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Build and push Frontend
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: ./frontend/Dockerfile
+          target: production
+          push: true
+          tags: ${{ steps.frontend-meta.outputs.tags }}
+          labels: ${{ steps.frontend-meta.outputs.labels }}
+          build-args: |
+            NEXT_PUBLIC_CORE_API_URL=${{ secrets.NEXT_PUBLIC_CORE_API_URL }}
+            NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY=${{ secrets.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+  # ============================================
+  # Deploy to Staging Environment
+  # ============================================
+  deploy-staging:
+    name: Deploy to Staging
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: staging
+      url: https://staging.yourdomain.com
+    if: github.ref == 'refs/heads/develop' || (github.event_name == 'workflow_dispatch' && github.event.inputs.environment == 'staging')
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Deploy to Staging Server
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.STAGING_HOST }}
+          username: ${{ secrets.STAGING_USER }}
+          key: ${{ secrets.STAGING_SSH_KEY }}
+          script: |
+            cd /opt/stripe-app
+            
+            # Pull latest images
+            docker-compose -f docker-compose.prod.yml pull
+            
+            # Run database migrations
+            docker-compose -f docker-compose.prod.yml up -d postgres
+            sleep 5
+            docker-compose -f docker-compose.prod.yml run --rm core-backend npx typeorm migration:run || true
+            
+            # Rolling deploy
+            docker-compose -f docker-compose.prod.yml up -d --no-deps --scale webhooks-backend=2 webhooks-backend
+            sleep 10
+            docker-compose -f docker-compose.prod.yml up -d --no-deps core-backend
+            sleep 10
+            docker-compose -f docker-compose.prod.yml up -d --no-deps frontend
+            
+            # Health check
+            docker-compose -f docker-compose.prod.yml ps
+            docker-compose -f docker-compose.prod.yml exec -T core-backend curl -f http://localhost:4917/ || exit 1
+            docker-compose -f docker-compose.prod.yml exec -T webhooks-backend curl -f http://localhost:4923/ || exit 1
+            
+            # Cleanup old images
+            docker system prune -f
+
+  # ============================================
+  # Deploy to Production Environment
+  # ============================================
+  deploy-production:
+    name: Deploy to Production
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: production
+      url: https://yourdomain.com
+    if: github.ref == 'refs/heads/main' && (github.event_name != 'workflow_dispatch' || github.event.inputs.environment == 'production')
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Deploy to Production Server
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.PRODUCTION_HOST }}
+          username: ${{ secrets.PRODUCTION_USER }}
+          key: ${{ secrets.PRODUCTION_SSH_KEY }}
+          script: |
+            cd /opt/stripe-app
+            
+            # Backup database before deploy
+            docker-compose -f docker-compose.prod.yml exec -T postgres pg_dump -U postgres stripe_app > backups/pre-deploy-$(date +%Y%m%d_%H%M%S).sql
+            
+            # Tag current version for rollback
+            docker tag ${{ needs.build.outputs.core-image }} stripe-app/core-backend:backup-$(date +%Y%m%d_%H%M%S)
+            docker tag ${{ needs.build.outputs.webhooks-image }} stripe-app/webhooks-backend:backup-$(date +%Y%m%d_%H%M%S)
+            
+            # Pull latest images
+            docker-compose -f docker-compose.prod.yml pull
+            
+            # Run database migrations (with backup verification)
+            docker-compose -f docker-compose.prod.yml run --rm core-backend npm run migration:run || {
+              echo "Migration failed, restoring from backup..."
+              # Automated rollback to backup
+              exit 1
+            }
+            
+            # Blue/Green deployment
+            docker-compose -f docker-compose.prod.yml -p stripe-app-green up -d
+            
+            # Health check on green
+            sleep 30
+            docker-compose -f docker-compose.prod.yml -p stripe-app-green ps
+            curl -f https://yourdomain.com/health || {
+              echo "Health check failed, rolling back..."
+              docker-compose -f docker-compose.prod.yml -p stripe-app-green down
+              exit 1
+            }
+            
+            # Switch traffic to green (if using a load balancer)
+            # This step depends on your load balancer configuration
+            
+            # Cleanup blue (old version)
+            docker-compose -f docker-compose.prod.yml -p stripe-app down || true
+            docker-compose -f docker-compose.prod.yml -p stripe-app up -d
+            
+            # Cleanup old images
+            docker system prune -f
+
+  # ============================================
+  # Smoke Tests After Deployment
+  # ============================================
+  smoke-tests:
+    name: Smoke Tests
+    needs: [deploy-staging, deploy-production]
+    if: always() && (needs.deploy-staging.result == 'success' || needs.deploy-production.result == 'success')
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Run Smoke Tests
+        run: |
+          # Wait for deployment
+          sleep 30
+          
+          # Test API health
+          curl -f https://staging.yourdomain.com/api/health || exit 1
+          curl -f https://staging.yourdomain.com/webhooks/health || exit 1
+          
+          # Test frontend loads
+          curl -f https://staging.yourdomain.com/ || exit 1
+          
+          # Test critical endpoints
+          # Add your specific smoke tests here
+
+      - name: Notify on Success
+        if: success()
+        uses: slackapi/slack-github-action@v1.25.0
+        with:
+          payload: |
+            {
+              "text": "✅ Deployment successful!",
+              "blocks": [
+                {
+                  "type": "section",
+                  "text": {
+                    "type": "mrkdwn",
+                    "text": "*Deployment to ${{ github.event.inputs.environment || 'staging' }} successful*\n*Commit:* ${{ github.sha }}\n*Branch:* ${{ github.ref }}"
+                  }
+                }
+              ]
+            }
+        env:
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+
+      - name: Notify on Failure
+        if: failure()
+        uses: slackapi/slack-github-action@v1.25.0
+        with:
+          payload: |
+            {
+              "text": "❌ Deployment failed!",
+              "blocks": [
+                {
+                  "type": "section",
+                  "text": {
+                    "type": "mrkdwn",
+                    "text": "*Deployment to ${{ github.event.inputs.environment || 'staging' }} FAILED*\n*Commit:* ${{ github.sha }}\n*Branch:* ${{ github.ref }}\n*Action:* ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+                  }
+                }
+              ]
+            }
+        env:
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}

@@ -1,0 +1,150 @@
+# ============================================
+# Docker Swarm Extension Configuration
+# Usage: docker-compose -f docker-compose.prod.yml -f docker-compose.swarm.yml up -d
+# ============================================
+
+version: '3.8'
+
+services:
+  # ============================================
+  # Override configurations for Swarm mode
+  # ============================================
+  traefik:
+    deploy:
+      placement:
+        constraints:
+          - node.role == manager
+      replicas: 1
+      update_config:
+        parallelism: 1
+        delay: 10s
+
+  postgres:
+    deploy:
+      replicas: 1
+      placement:
+        constraints:
+          - node.labels.database == true
+      update_config:
+        parallelism: 1
+        delay: 30s
+      restart_policy:
+        condition: any
+        delay: 5s
+        max_attempts: 3
+        window: 120s
+    # In Swarm mode, volumes need to be named and pre-created
+    volumes:
+      - type: bind
+        source: /var/lib/docker/volumes/stripe-app_postgres-data/_data
+        target: /var/lib/postgresql/data
+
+  redis:
+    deploy:
+      replicas: 1
+      placement:
+        constraints:
+          - node.labels.cache == true
+      update_config:
+        parallelism: 1
+        delay: 10s
+      restart_policy:
+        condition: any
+        delay: 5s
+        max_attempts: 3
+    volumes:
+      - type: bind
+        source: /var/lib/docker/volumes/stripe-app_redis-data/_data
+        target: /data
+
+  core-backend:
+    deploy:
+      replicas: 2
+      placement:
+        constraints:
+          - node.labels.worker == true
+      update_config:
+        parallelism: 1
+        delay: 10s
+        failure_action: rollback
+        order: start-first
+      restart_policy:
+        condition: any
+        delay: 5s
+        max_attempts: 3
+        window: 120s
+
+  webhooks-backend:
+    deploy:
+      replicas: 1  # Must remain at 1 for webhook consistency
+      placement:
+        constraints:
+          - node.labels.worker == true
+      update_config:
+        parallelism: 1
+        delay: 10s
+        failure_action: rollback
+        order: start-first
+      restart_policy:
+        condition: any
+        delay: 5s
+        max_attempts: 3
+        window: 120s
+
+  frontend:
+    deploy:
+      replicas: 2
+      placement:
+        constraints:
+          - node.labels.worker == true
+      update_config:
+        parallelism: 1
+        delay: 10s
+        failure_action: rollback
+        order: start-first
+      restart_policy:
+        condition: any
+        delay: 5s
+        max_attempts: 3
+        window: 120s
+
+  backup:
+    deploy:
+      replicas: 1
+      placement:
+        constraints:
+          - node.labels.database == true
+      restart_policy:
+        condition: any
+        delay: 60s
+
+# ============================================
+# Swarm-specific configurations
+# ============================================
+# In Swarm mode, secrets are managed at the stack level
+# Not declared here as they're created externally
+
+# ============================================
+# Volumes (in Swarm, use named volumes)
+# ============================================
+volumes:
+  postgres-data:
+    driver: local
+  redis-data:
+    driver: local
+  traefik-certs:
+    driver: local
+
+# ============================================
+# Networks (overlay networks for cross-node communication)
+# ============================================
+networks:
+  frontend-network:
+    driver: overlay
+    scope: swarm
+    attachable: true
+  backend-network:
+    driver: overlay
+    scope: swarm
+    internal: true
+    attachable: true

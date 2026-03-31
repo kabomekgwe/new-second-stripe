@@ -1,0 +1,387 @@
+name: CI - Build and Test
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main, develop]
+
+env:
+  NODE_VERSION: '22'
+
+jobs:
+  # ============================================
+  # Lint and Type Check
+  # ============================================
+  lint:
+    name: Lint and Type Check
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+          cache-dependency-path: |
+            core-backend/package-lock.json
+            webhooks-backend/package-lock.json
+            frontend/package-lock.json
+            shared/package-lock.json
+
+      # Core Backend
+      - name: Install Core Backend Dependencies
+        working-directory: ./core-backend
+        run: npm ci
+
+      - name: Lint Core Backend
+        working-directory: ./core-backend
+        run: npm run lint
+
+      - name: Type Check Core Backend
+        working-directory: ./core-backend
+        run: npx tsc --noEmit
+
+      # Webhooks Backend
+      - name: Install Webhooks Backend Dependencies
+        working-directory: ./webhooks-backend
+        run: npm ci
+
+      - name: Lint Webhooks Backend
+        working-directory: ./webhooks-backend
+        run: npm run lint
+
+      - name: Type Check Webhooks Backend
+        working-directory: ./webhooks-backend
+        run: npx tsc --noEmit
+
+      # Frontend
+      - name: Install Frontend Dependencies
+        working-directory: ./frontend
+        run: npm ci
+
+      - name: Type Check Frontend
+        working-directory: ./frontend
+        run: npx tsc --noEmit
+
+  # ============================================
+  # Unit Tests with Coverage
+  # ============================================
+  test-core-backend:
+    name: Test Core Backend
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: stripe_app_test
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+        ports:
+          - 5432:5432
+      redis:
+        image: redis:7-alpine
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+        ports:
+          - 6379:6379
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+          cache-dependency-path: |
+            core-backend/package-lock.json
+            shared/package-lock.json
+
+      - name: Install Shared Package
+        working-directory: ./shared
+        run: npm ci && npm run build
+
+      - name: Install Core Backend Dependencies
+        working-directory: ./core-backend
+        run: npm ci
+
+      - name: Run Core Backend Tests
+        working-directory: ./core-backend
+        env:
+          NODE_ENV: test
+          DB_HOST: localhost
+          DB_PORT: 5432
+          DB_NAME: stripe_app_test
+          DB_USER: postgres
+          DB_PASSWORD: postgres
+          REDIS_URL: redis://localhost:6379
+          SESSION_SECRET: test-secret-key
+        run: npm run test:cov
+
+      - name: Upload Coverage Report
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-core-backend
+          path: core-backend/coverage/
+
+  test-webhooks-backend:
+    name: Test Webhooks Backend
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: stripe_app_test
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+        ports:
+          - 5432:5432
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+          cache-dependency-path: |
+            webhooks-backend/package-lock.json
+            shared/package-lock.json
+
+      - name: Install Shared Package
+        working-directory: ./shared
+        run: npm ci && npm run build
+
+      - name: Install Webhooks Backend Dependencies
+        working-directory: ./webhooks-backend
+        run: npm ci
+
+      - name: Run Webhooks Backend Tests
+        working-directory: ./webhooks-backend
+        env:
+          NODE_ENV: test
+          DB_HOST: localhost
+          DB_PORT: 5432
+          DB_NAME: stripe_app_test
+          DB_USER: postgres
+          DB_PASSWORD: postgres
+          STRIPE_SECRET_KEY: sk_test_xxx
+          STRIPE_WEBHOOK_SECRET: whsec_xxx
+        run: npm run test:cov
+
+      - name: Upload Coverage Report
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-webhooks-backend
+          path: webhooks-backend/coverage/
+
+  # ============================================
+  # Docker Build Tests
+  # ============================================
+  docker-build:
+    name: Docker Build Tests
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build Shared Package
+        run: docker build --target shared -t stripe-app/shared:latest .
+
+      - name: Build Core Backend
+        run: |
+          docker build \
+            --target production \
+            -f core-backend/Dockerfile \
+            -t stripe-app/core-backend:latest \
+            .
+
+      - name: Build Webhooks Backend
+        run: |
+          docker build \
+            --target production \
+            -f webhooks-backend/Dockerfile \
+            -t stripe-app/webhooks-backend:latest \
+            .
+
+      - name: Build Frontend
+        run: |
+          docker build \
+            --target production \
+            -f frontend/Dockerfile \
+            --build-arg NEXT_PUBLIC_CORE_API_URL=http://localhost:4917 \
+            --build-arg NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY=pk_test_xxx \
+            -t stripe-app/frontend:latest \
+            .
+
+      - name: Test Docker Compose Up
+        run: |
+          cp .env.example .env
+          sed -i 's/STRIPE_SECRET_KEY=.*/STRIPE_SECRET_KEY=sk_test_xxx/' .env
+          sed -i 's/STRIPE_WEBHOOK_SECRET=.*/STRIPE_WEBHOOK_SECRET=whsec_xxx/' .env
+          sed -i 's/RESEND_API_KEY=.*/RESEND_API_KEY=test/' .env
+          docker-compose -f docker-compose.yml up -d postgres redis
+          sleep 10
+          docker-compose -f docker-compose.yml ps
+          docker-compose -f docker-compose.yml down
+
+  # ============================================
+  # Payment Flow Integration Test (Stripe Test Mode)
+  # ============================================
+  payment-flow-test:
+    name: Payment Flow E2E Test
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: stripe_app_test
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+        ports:
+          - 5432:5432
+      redis:
+        image: redis:7-alpine
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+        ports:
+          - 6379:6379
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+          cache-dependency-path: |
+            core-backend/package-lock.json
+            shared/package-lock.json
+
+      - name: Install Shared Package
+        working-directory: ./shared
+        run: npm ci && npm run build
+
+      - name: Install Core Backend Dependencies
+        working-directory: ./core-backend
+        run: npm ci
+
+      - name: Start Core Backend
+        working-directory: ./core-backend
+        env:
+          NODE_ENV: test
+          DB_HOST: localhost
+          DB_PORT: 5432
+          DB_NAME: stripe_app_test
+          DB_USER: postgres
+          DB_PASSWORD: postgres
+          REDIS_URL: redis://localhost:6379
+          SESSION_SECRET: test-secret-key
+          STRIPE_SECRET_KEY: ${{ secrets.STRIPE_TEST_SECRET_KEY }}
+          STRIPE_PUBLISHABLE_KEY: ${{ secrets.STRIPE_TEST_PUBLISHABLE_KEY }}
+          FRONTEND_URL: http://localhost:3000
+        run: |
+          npm run start:prod &
+          sleep 15
+          # Health check
+          curl -f http://localhost:4917/ || exit 1
+
+      - name: Install E2E Test Dependencies
+        working-directory: ./e2e-tests
+        run: npm ci
+
+      - name: Install Playwright Browsers
+        working-directory: ./e2e-tests
+        run: npx playwright install --with-deps
+
+      - name: Run Payment Flow Tests
+        working-directory: ./e2e-tests
+        env:
+          BASE_URL: http://localhost:3000
+          API_URL: http://localhost:4917
+          STRIPE_SECRET_KEY: ${{ secrets.STRIPE_TEST_SECRET_KEY }}
+        run: npm run test:auth
+
+      - name: Upload E2E Test Results
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: playwright-report
+          path: e2e-tests/playwright-report/
+          retention-days: 30
+
+      - name: Cleanup
+        if: always()
+        run: |
+          pkill -f "node dist/main" || true
+
+  # ============================================
+  # Security Scanning
+  # ============================================
+  security-scan:
+    name: Security Scan
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Run Trivy vulnerability scanner on Core Backend
+        uses: aquasecurity/trivy-action@master
+        with:
+          scan-type: 'fs'
+          scan-ref: './core-backend'
+          format: 'sarif'
+          output: 'trivy-results-core.sarif'
+          severity: 'CRITICAL,HIGH'
+
+      - name: Run Trivy vulnerability scanner on Webhooks Backend
+        uses: aquasecurity/trivy-action@master
+        with:
+          scan-type: 'fs'
+          scan-ref: './webhooks-backend'
+          format: 'sarif'
+          output: 'trivy-results-webhooks.sarif'
+          severity: 'CRITICAL,HIGH'
+
+      - name: Run Trivy vulnerability scanner on Docker images
+        uses: aquasecurity/trivy-action@master
+        with:
+          image-ref: 'stripe-app/core-backend:latest'
+          format: 'sarif'
+          output: 'trivy-results-docker.sarif'
+          severity: 'CRITICAL,HIGH'
+
+      - name: Upload Trivy scan results
+        uses: github/codeql-action/upload-sarif@v3
+        if: always()
+        with:
+          sarif_file: 'trivy-results-core.sarif'

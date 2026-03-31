@@ -11,11 +11,14 @@ import { DatabaseModule } from './database/database.module';
 import { CsrfModule } from './csrf/csrf.module';
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
+import { MetricsController } from './metrics/metrics.controller';
 
 @Module({
   imports: [
     ConfigModule.forRoot({ isGlobal: true }),
-    ThrottlerModule.forRoot([{ ttl: 60000, limit: 10 }]),
+    // Rate limiting: 100 requests per minute (adjust based on your needs)
+    // More restrictive for auth endpoints via @Throttle decorator
+    ThrottlerModule.forRoot([{ ttl: 60000, limit: 100 }]),
     DatabaseModule,
     StripeModule,
     AuthModule,
@@ -24,7 +27,7 @@ import { AppService } from './app.service';
     BillingModule,
     CsrfModule,
   ],
-  controllers: [AppController],
+  controllers: [AppController, MetricsController],
   providers: [
     AppService,
     { provide: APP_GUARD, useClass: ThrottlerGuard },

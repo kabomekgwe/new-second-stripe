@@ -1,0 +1,18 @@
+{
+  "name": "stripe-app-load-tests",
+  "version": "1.0.0",
+  "description": "Load testing suite for Stripe Payment Application using k6",
+  "scripts": {
+    "test:smoke": "k6 run --env ENV=smoke smoke-test.js",
+    "test:load": "k6 run --env ENV=load load-test.js",
+    "test:stress": "k6 run --env ENV=stress stress-test.js",
+    "test:soak": "k6 run --env ENV=soak soak-test.js",
+    "test:spike": "k6 run --env ENV=spike spike-test.js",
+    "test:db": "k6 run --env ENV=db database-test.js",
+    "docker:load": "docker run --rm -v $(pwd):/k6 grafana/k6:latest run /k6/load-test.js",
+    "docker:smoke": "docker run --rm -v $(pwd):/k6 grafana/k6:latest run /k6/smoke-test.js"
+  },
+  "devDependencies": {
+    "@types/k6": "^0.47.0"
+  }
+}

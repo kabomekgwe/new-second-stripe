@@ -6,6 +6,7 @@ import { getSessionConfig } from './config/session.config';
 import { getCsrfConfig } from './config/csrf.config';
 import * as passport from 'passport';
 import * as cookieParser from 'cookie-parser';
+import helmet from 'helmet';
 import { StripeExceptionFilter } from './common/filters/stripe-exception.filter';
 import { GlobalExceptionFilter } from './common/filters/http-exception.filter';
 import { LoggingInterceptor } from './common/interceptors/logging.interceptor';
@@ -13,6 +14,35 @@ import { LoggingInterceptor } from './common/interceptors/logging.interceptor';
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
   const configService = app.get(ConfigService);
+  const isProduction = configService.get('NODE_ENV') === 'production';
+
+  // Security: Helmet HTTP headers
+  app.use(
+    helmet({
+      contentSecurityPolicy: {
+        directives: {
+          defaultSrc: ["'self'"],
+          scriptSrc: ["'self'", "'unsafe-inline'", 'https://js.stripe.com'],
+          frameSrc: ["'self'", 'https://js.stripe.com', 'https://hooks.stripe.com'],
+          connectSrc: ["'self'", 'https://api.stripe.com'],
+          imgSrc: ["'self'", 'data:', 'https:'],
+          styleSrc: ["'self'", "'unsafe-inline'"],
+          fontSrc: ["'self'"],
+          objectSrc: ["'none'"],
+          upgradeInsecureRequests: [],
+        },
+      },
+      crossOriginEmbedderPolicy: false, // Disable for Stripe.js compatibility
+      crossOriginResourcePolicy: { policy: 'cross-origin' },
+      hsts: isProduction
+        ? {
+            maxAge: 31536000,
+            includeSubDomains: true,
+            preload: true,
+          }
+        : false,
+    }),
+  );
 
   app.enableCors({
     origin: configService.get('FRONTEND_URL', 'http://localhost:3000'),

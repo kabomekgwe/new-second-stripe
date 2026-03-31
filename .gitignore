@@ -90,3 +90,7 @@ stripe-secret-key*
 # Misc
 *.pem
 *.p12
+# Secrets
+.secrets/
+*.pem
+*.key

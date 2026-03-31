@@ -1,0 +1,374 @@
+# ============================================
+# Production Docker Compose Configuration
+# Stripe Payment Application - Production Deployment
+# 
+# Usage:
+#   1. Copy .env.example to .env and fill in production values
+#   2. Ensure Docker secrets are configured
+#   3. Run: docker-compose -f docker-compose.prod.yml up -d
+#
+# Prerequisites:
+#   - Docker Engine 24.0+
+#   - Docker Swarm (recommended) or Compose
+#   - SSL certificates mounted or managed by Traefik
+# ============================================
+
+version: '3.8'
+
+services:
+  # ============================================
+  # Reverse Proxy with SSL (Traefik)
+  # ============================================
+  traefik:
+    image: traefik:v3.1
+    container_name: traefik
+    command:
+      - "--api.dashboard=true"
+      - "--providers.docker=true"
+      - "--providers.docker.exposedbydefault=false"
+      - "--entrypoints.web.address=:80"
+      - "--entrypoints.websecure.address=:443"
+      - "--certificatesresolvers.letsencrypt.acme.tlschallenge=true"
+      - "--certificatesresolvers.letsencrypt.acme.email=admin@yourdomain.com"
+      - "--certificatesresolvers.letsencrypt.acme.storage=/letsencrypt/acme.json"
+      - "--entrypoints.web.http.redirections.entryPoint.to=websecure"
+      - "--entrypoints.web.http.redirections.entryPoint.scheme=https"
+      - "--ping=true"
+      - "--accesslog=true"
+      - "--log.level=INFO"
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - traefik-certs:/letsencrypt
+    networks:
+      - frontend-network
+      - backend-network
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "localhost:8080/ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+    restart: unless-stopped
+
+  # ============================================
+  # PostgreSQL Database
+  # ============================================
+  postgres:
+    image: postgres:16-alpine
+    container_name: postgres-prod
+    environment:
+      POSTGRES_DB_FILE: /run/secrets/db_name
+      POSTGRES_USER_FILE: /run/secrets/db_user
+      POSTGRES_PASSWORD_FILE: /run/secrets/db_password
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+      - ./backups:/backups
+    networks:
+      - backend-network
+    secrets:
+      - db_name
+      - db_user
+      - db_password
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $$(cat /run/secrets/db_user) -d $$(cat /run/secrets/db_name)"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          cpus: '1.0'
+          memory: 1G
+        reservations:
+          cpus: '0.5'
+          memory: 512M
+    command: >
+      postgres 
+      -c ssl=on
+      -c ssl_cert_file=/etc/ssl/certs/server.crt
+      -c ssl_key_file=/etc/ssl/private/server.key
+
+  # ============================================
+  # Redis Cache & Session Store
+  # ============================================
+  redis:
+    image: redis:7-alpine
+    container_name: redis-prod
+    command: >
+      redis-server
+      --appendonly yes
+      --appendfsync everysec
+      --requirepass $(cat /run/secrets/redis_password)
+      --maxmemory 512mb
+      --maxmemory-policy allkeys-lru
+    volumes:
+      - redis-data:/data
+      - ./redis/redis.conf:/usr/local/etc/redis/redis.conf:ro
+    networks:
+      - backend-network
+    secrets:
+      - redis_password
+    healthcheck:
+      test: ["CMD", "redis-cli", "-a", "$(cat /run/secrets/redis_password)", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: 512M
+        reservations:
+          cpus: '0.25'
+          memory: 256M
+
+  # ============================================
+  # Core Backend API
+  # ============================================
+  core-backend:
+    build:
+      context: .
+      dockerfile: core-backend/Dockerfile
+      target: production
+    image: ghcr.io/yourusername/stripe-app/core-backend:latest
+    container_name: core-backend-prod
+    environment:
+      NODE_ENV: production
+      PORT: 4917
+      DB_HOST: postgres
+      DB_PORT: 5432
+      DB_NAME_FILE: /run/secrets/db_name
+      DB_USER_FILE: /run/secrets/db_user
+      DB_PASSWORD_FILE: /run/secrets/db_password
+      REDIS_URL_FILE: /run/secrets/redis_url
+      SESSION_SECRET_FILE: /run/secrets/session_secret
+      STRIPE_SECRET_KEY_FILE: /run/secrets/stripe_secret_key
+      STRIPE_PUBLISHABLE_KEY_FILE: /run/secrets/stripe_publishable_key
+      STRIPE_BILLING_METERED_PRICE_ID_FILE: /run/secrets/stripe_price_id
+      FRONTEND_URL: https://yourdomain.com
+    networks:
+      - backend-network
+      - frontend-network
+    secrets:
+      - db_name
+      - db_user
+      - db_password
+      - redis_url
+      - session_secret
+      - stripe_secret_key
+      - stripe_publishable_key
+      - stripe_price_id
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:4917/ || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    restart: unless-stopped
+    deploy:
+      replicas: 2
+      update_config:
+        parallelism: 1
+        delay: 10s
+        failure_action: rollback
+        order: start-first
+      rollback_config:
+        parallelism: 1
+        delay: 10s
+      resources:
+        limits:
+          cpus: '1.0'
+          memory: 1G
+        reservations:
+          cpus: '0.5'
+          memory: 512M
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.core-backend.rule=Host(`yourdomain.com`) && PathPrefix(`/api`)"
+      - "traefik.http.routers.core-backend.entrypoints=websecure"
+      - "traefik.http.routers.core-backend.tls.certresolver=letsencrypt"
+      - "traefik.http.routers.core-backend.middlewares=core-backend-stripprefix"
+      - "traefik.http.middlewares.core-backend-stripprefix.stripprefix.prefixes=/api"
+      - "traefik.http.services.core-backend.loadbalancer.server.port=4917"
+
+  # ============================================
+  # Webhooks Backend
+  # ============================================
+  webhooks-backend:
+    build:
+      context: .
+      dockerfile: webhooks-backend/Dockerfile
+      target: production
+    image: ghcr.io/yourusername/stripe-app/webhooks-backend:latest
+    container_name: webhooks-backend-prod
+    environment:
+      NODE_ENV: production
+      PORT: 4923
+      DB_HOST: postgres
+      DB_PORT: 5432
+      DB_NAME_FILE: /run/secrets/db_name
+      DB_USER_FILE: /run/secrets/db_user
+      DB_PASSWORD_FILE: /run/secrets/db_password
+      STRIPE_SECRET_KEY_FILE: /run/secrets/stripe_secret_key
+      STRIPE_WEBHOOK_SECRET_FILE: /run/secrets/stripe_webhook_secret
+      RESEND_API_KEY_FILE: /run/secrets/resend_api_key
+      RESEND_FROM_EMAIL_FILE: /run/secrets/resend_from_email
+    networks:
+      - backend-network
+      - frontend-network
+    secrets:
+      - db_name
+      - db_user
+      - db_password
+      - stripe_secret_key
+      - stripe_webhook_secret
+      - resend_api_key
+      - resend_from_email
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:4923/ || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    restart: unless-stopped
+    deploy:
+      replicas: 1  # Webhooks should be single instance for consistency
+      update_config:
+        parallelism: 1
+        delay: 10s
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: 512M
+        reservations:
+          cpus: '0.25'
+          memory: 256M
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.webhooks-backend.rule=Host(`webhooks.yourdomain.com`)"
+      - "traefik.http.routers.webhooks-backend.entrypoints=websecure"
+      - "traefik.http.routers.webhooks-backend.tls.certresolver=letsencrypt"
+      - "traefik.http.services.webhooks-backend.loadbalancer.server.port=4923"
+
+  # ============================================
+  # Frontend (Next.js)
+  # ============================================
+  frontend:
+    build:
+      context: .
+      dockerfile: frontend/Dockerfile
+      target: production
+      args:
+        NEXT_PUBLIC_CORE_API_URL: https://yourdomain.com/api
+        NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY_FILE: /run/secrets/stripe_publishable_key
+    image: ghcr.io/yourusername/stripe-app/frontend:latest
+    container_name: frontend-prod
+    environment:
+      NODE_ENV: production
+      PORT: 3000
+    networks:
+      - frontend-network
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:3000/ || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    restart: unless-stopped
+    deploy:
+      replicas: 2
+      update_config:
+        parallelism: 1
+        delay: 10s
+        failure_action: rollback
+        order: start-first
+      resources:
+        limits:
+          cpus: '1.0'
+          memory: 1G
+        reservations:
+          cpus: '0.5'
+          memory: 512M
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.frontend.rule=Host(`yourdomain.com`)"
+      - "traefik.http.routers.frontend.entrypoints=websecure"
+      - "traefik.http.routers.frontend.tls.certresolver=letsencrypt"
+      - "traefik.http.services.frontend.loadbalancer.server.port=3000"
+
+  # ============================================
+  # Database Backup Service
+  # ============================================
+  backup:
+    image: postgres:16-alpine
+    container_name: postgres-backup
+    command: >
+      sh -c '
+        echo "0 2 * * * PGPASSWORD=$$(cat /run/secrets/db_password) pg_dump -h postgres -U $$(cat /run/secrets/db_user) -d $$(cat /run/secrets/db_name) | gzip > /backups/db-$$(date +\%Y\%m\%d-\%H\%M\%S).sql.gz && find /backups -name '*.sql.gz' -mtime +7 -delete" | crontab - && crond -f
+      '
+    volumes:
+      - ./backups:/backups
+    networks:
+      - backend-network
+    secrets:
+      - db_name
+      - db_user
+      - db_password
+    restart: unless-stopped
+
+# ============================================
+# Docker Secrets (PRODUCTION ONLY)
+# Create these with: docker secret create <name> <file>
+# ============================================
+secrets:
+  db_name:
+    external: true
+  db_user:
+    external: true
+  db_password:
+    external: true
+  redis_password:
+    external: true
+  redis_url:
+    external: true
+  session_secret:
+    external: true
+  stripe_secret_key:
+    external: true
+  stripe_publishable_key:
+    external: true
+  stripe_webhook_secret:
+    external: true
+  stripe_price_id:
+    external: true
+  resend_api_key:
+    external: true
+  resend_from_email:
+    external: true
+
+# ============================================
+# Volumes
+# ============================================
+volumes:
+  postgres-data:
+    driver: local
+  redis-data:
+    driver: local
+  traefik-certs:
+    driver: local
+
+# ============================================
+# Networks
+# ============================================
+networks:
+  frontend-network:
+    driver: bridge
+  backend-network:
+    driver: bridge
+    internal: true  # Backend network has no external access
