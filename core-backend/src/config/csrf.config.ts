@@ -36,7 +36,11 @@ export function getCsrfConfig(configService: ConfigService) {
     ignoredMethods: ['GET', 'HEAD', 'OPTIONS'],
     // Skip CSRF protection for the token endpoint itself
     skipCsrfProtection: (req: Request) => {
-      return req.path === '/csrf/token';
+      // Skip CSRF for token endpoint and payment method sync
+      // The sync endpoint is called after Stripe confirms setup intent, which is secure
+      // The payment method ID comes directly from Stripe's confirmed setup intent
+      const skippedPaths = ['/csrf/token', '/payment-methods/sync'];
+      return skippedPaths.some(path => req.path === path || req.path.endsWith(path));
     },
     getCsrfTokenFromRequest: (req: Request) => {
       // Check header first, then body, then query

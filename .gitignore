@@ -1,4 +1,6 @@
-# Dependencies
+# ============================================
+# Node.js / JavaScript
+# ============================================
 node_modules/
 .pnp/
 .pnp.*
@@ -7,15 +9,37 @@ node_modules/
 !.yarn/plugins
 !.yarn/releases
 !.yarn/versions
-.agents/
-.omx/
+
+# Package manager lock files (keep package-lock.json, ignore others)
+# pnpm-lock.yaml
+# yarn.lock
+
+# ============================================
 # Build outputs
+# ============================================
 dist/
 build/
 .next/
 out/
+*.tsbuildinfo
+next-env.d.ts
 
+# ============================================
+# Environment files & Secrets
+# ============================================
+.env
+.env.*
+!.env.example
+!.env.template
+.env.local
+.env.*.local
+
+# Secrets directory
+.secrets/
+
+# ============================================
 # Logs
+# ============================================
 logs/
 *.log
 npm-debug.log*
@@ -25,13 +49,26 @@ yarn-error.log*
 lerna-debug.log*
 .pnpm-debug.log*
 
-# Environment files
-.env
-.env.*
-!.env.example
-!.env.template
+# ============================================
+# Testing
+# ============================================
+# Coverage
+coverage/
+.nyc_output/
 
-# IDEs and editors
+# Jest
+jest-results.json
+
+# Playwright E2E tests
+playwright-report/
+test-results/
+playwright/.cache/
+**/playwright-report/
+**/test-results/
+
+# ============================================
+# IDEs and Editors
+# ============================================
 .idea/
 .vscode/*
 !.vscode/settings.json
@@ -48,7 +85,9 @@ lerna-debug.log*
 *.swo
 *~
 
-# OS files
+# ============================================
+# OS Files
+# ============================================
 .DS_Store
 .DS_Store?
 ._*
@@ -57,40 +96,101 @@ lerna-debug.log*
 ehthumbs.db
 Thumbs.db
 
-# Testing
-coverage/
-.nyc_output/
+# ============================================
+# Docker & Infrastructure
+# ============================================
+# Docker volumes (if mounted locally)
+docker-volumes/
+postgres-data/
+redis-data/
 
-# TypeScript
-*.tsbuildinfo
-next-env.d.ts
+# SSL certificates (NEVER commit these)
+ssl/*.pem
+ssl/*.key
+ssl/*.crt
+ssl/*.csr
+*.pem
+*.key
+*.crt
+*.csr
+*.p12
 
-# Temp files
+# Docker secrets
+docker-secrets/
+
+# ============================================
+# Database
+# ============================================
+*.db
+*.sqlite
+*.sqlite3
+sql/dumps/
+backups/*.sql
+backups/*.dump
+
+# ============================================
+# Monitoring & Observability
+# ============================================
+# Grafana data
+grafana-data/
+monitoring/grafana/data/
+
+# Prometheus data
+prometheus-data/
+
+# Loki data
+loki-data/
+
+# ============================================
+# Load Testing (K6)
+# ============================================
+load-testing/results/
+k6-results/
+
+# ============================================
+# Caches
+# ============================================
+.cache/
 .temp/
 .tmp/
 *.tmp
 *.temp
+.eslintcache
+.stylelintcache
+.npm
 
-# Runtime data
+# ============================================
+# Debug & Diagnostic
+# ============================================
 pids/
 *.pid
 *.seed
 *.pid.lock
-
-# Diagnostic reports
 report.[0-9]*.[0-9]*.[0-9]*.[0-9]*.json
 
-# Vercel
+# ============================================
+# Deployment Platforms
+# ============================================
 .vercel/
+.netlify/
+.aws/
 
-# Stripe (for this Stripe project)
-*.pem
+# ============================================
+# Stripe & Payment Keys (Security)
+# ============================================
 stripe-secret-key*
+stripe-webhook-secret*
 
-# Misc
-*.pem
-*.p12
-# Secrets
-.secrets/
-*.pem
-*.key
+# ============================================
+# Misc Project-Specific
+# ============================================
+# Playwright MCP logs
+.playwright-mcp/
+
+# Agent/AI tool directories
+.agents/
+.omx/
+
+# Temporary backup files
+*.bak
+*.backup

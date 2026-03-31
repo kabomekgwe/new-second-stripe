@@ -114,26 +114,47 @@ function SetupForm({ userEmail, userName }: SetupFormProps) {
     if (error) {
       setError(error.message || 'Setup failed. Please try again.');
       setSubmitting(false);
-    } else {
-      const setupPaymentMethodId =
-        typeof setupIntent?.payment_method === 'string'
-          ? setupIntent.payment_method
-          : setupIntent?.payment_method?.id ?? null;
+      return;
+    }
 
-      if (setupPaymentMethodId) {
-        // Immediately sync the payment method to the database
-        // This ensures the payment method is available without waiting for webhooks
-        try {
-          await syncPaymentMethod(setupPaymentMethodId).unwrap();
-          setSuccess(true);
-        } catch {
-          // If sync fails, the webhook will eventually process it
-          // Show success anyway - the payment method was added to Stripe
-          setSuccess(true);
-        }
-      } else {
-        setSuccess(true);
-      }
+    // Log the setup intent for debugging
+    console.log('Setup intent result:', {
+      id: setupIntent?.id,
+      status: setupIntent?.status,
+      payment_method: setupIntent?.payment_method,
+    });
+
+    // Check if setup succeeded
+    if (setupIntent?.status !== 'succeeded') {
+      setError('Payment setup did not complete. Please try again.');
+      setSubmitting(false);
+      return;
+    }
+
+    // Extract payment method ID
+    const setupPaymentMethodId =
+      typeof setupIntent.payment_method === 'string'
+        ? setupIntent.payment_method
+        : (setupIntent.payment_method as { id: string })?.id ?? null;
+
+    if (!setupPaymentMethodId) {
+      console.error('No payment method ID in setup intent:', setupIntent);
+      setError('Payment method was not properly attached. Please try again.');
+      setSubmitting(false);
+      return;
+    }
+
+    // Sync the payment method to the database
+    try {
+      await syncPaymentMethod(setupPaymentMethodId).unwrap();
+      setSuccess(true);
+    } catch (syncError) {
+      console.error('Failed to sync payment method:', syncError);
+      // Show success anyway - the payment method was added to Stripe
+      // The webhook will eventually process it, or user can retry
+      setSuccess(true);
+    } finally {
+      setSubmitting(false);
     }
   }
 

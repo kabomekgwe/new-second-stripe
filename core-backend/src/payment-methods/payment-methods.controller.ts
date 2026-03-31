@@ -7,6 +7,7 @@ import {
   Body,
   UseGuards,
   Req,
+  Logger,
 } from '@nestjs/common';
 import { Request } from 'express';
 import { User } from '@stripe-app/shared';
@@ -20,6 +21,8 @@ class SyncPaymentMethodDto {
 @Controller('payment-methods')
 @UseGuards(AuthenticatedGuard)
 export class PaymentMethodsController {
+  private readonly logger = new Logger(PaymentMethodsController.name);
+
   constructor(private paymentMethodsService: PaymentMethodsService) {}
 
   @Get()
@@ -46,10 +49,18 @@ export class PaymentMethodsController {
     @Req() req: Request,
     @Body() body: SyncPaymentMethodDto,
   ) {
-    return this.paymentMethodsService.syncAndSavePaymentMethod(
-      (req.user as User).id,
-      body.stripePaymentMethodId,
-    );
+    this.logger.log(`Syncing payment method ${body.stripePaymentMethodId} for user ${(req.user as User).id}`);
+    try {
+      const result = await this.paymentMethodsService.syncAndSavePaymentMethod(
+        (req.user as User).id,
+        body.stripePaymentMethodId,
+      );
+      this.logger.log(`Successfully synced payment method ${body.stripePaymentMethodId}`);
+      return result;
+    } catch (error) {
+      this.logger.error(`Failed to sync payment method ${body.stripePaymentMethodId}: ${error.message}`);
+      throw error;
+    }
   }
 
   @Post(':id/default')

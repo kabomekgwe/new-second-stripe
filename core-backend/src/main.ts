@@ -59,6 +59,10 @@ async function bootstrap() {
   // Cookie parser must come before session and CSRF
   app.use(cookieParser());
 
+  // Body parser must come BEFORE CSRF middleware
+  // CSRF checks req.body._csrf as fallback, so body must be parsed first
+  app.use(require('express').json());
+
   // Session middleware must come before passport and CSRF
   app.use(getSessionConfig(configService));
   app.use(passport.initialize());
