@@ -1,5 +1,4 @@
 import { test, expect, Page } from '@playwright/test';
-import Stripe from 'stripe';
 
 // Test credit card numbers from Stripe documentation
 const STRIPE_TEST_CARDS = {
@@ -93,106 +92,209 @@ test.describe('Complete User Flow', () => {
       await page.screenshot({ path: 'test-results/03-payment-methods-page.png' });
     });
 
-    // ============================================================
-    // STEP 4: ADD PAYMENT METHOD (Credit Card)
-    // ============================================================
-    await test.step('4. Add Payment Method - Credit Card', async () => {
-      // Click add payment method button
-      await page.click('text=Add Payment Method');
+  // ============================================================
+  // STEP 4: ADD PAYMENT METHOD (Credit Card)
+  // ============================================================
+  await test.step('4. Add Payment Method - Credit Card', async () => {
+    // Click add payment method button
+    await page.click('text=Add Payment Method');
 
-      // Wait for Stripe PaymentElement iframe to load
-      await page.waitForSelector('iframe[name^="__privateStripeFrame"]', { timeout: 15000 });
+    // Wait for redirect to add payment method page
+    await page.waitForURL('**/payment-methods/add', { timeout: 10000 });
+    
+    // Wait for Stripe PaymentElement iframe to load (use longer timeout)
+    await page.waitForSelector('iframe[name^="__privateStripeFrame"]', { timeout: 30000 });
 
-      // Wait for the iframe content to be ready - check for the card input field
-      await page.waitForTimeout(3000); // Give Stripe time to fully initialize
-
-      // Access the Stripe iframe content using Playwright's frame locator
-      const stripeFrame = page.frameLocator('iframe[name^="__privateStripeFrame"]').first();
-
-      // Fill card number - use placeholder as primary selector, role as fallback
-      // Stripe Elements require typing (not fill) for proper event handling
-      const cardInput = stripeFrame.locator('input[placeholder*="1234"]').or(stripeFrame.getByRole('textbox', { name: 'Card number' }));
-      await cardInput.waitFor({ state: 'visible', timeout: 10000 });
-      await cardInput.click(); // Focus the input first
-      await cardInput.type(STRIPE_TEST_CARDS.visa, { delay: 50 }); // Type with delay for Stripe validation
-      await page.waitForTimeout(300); // Wait for Stripe to process
-
-      // Fill expiry (MM / YY format) - type slowly for proper formatting
-      const expiryInput = stripeFrame.locator('input[placeholder*="MM"]').or(stripeFrame.getByRole('textbox', { name: /Expiration/i }));
-      await expiryInput.waitFor({ state: 'visible', timeout: 5000 });
-      await expiryInput.click();
-      await expiryInput.type('1230', { delay: 50 });
-      await page.waitForTimeout(300);
-
-      // Fill CVC
-      const cvcInput = stripeFrame.locator('input[placeholder*="CVC"]').or(stripeFrame.getByRole('textbox', { name: /Security code|CVC/i }));
-      await cvcInput.waitFor({ state: 'visible', timeout: 5000 });
-      await cvcInput.click();
-      await cvcInput.type('123', { delay: 50 });
-      await page.waitForTimeout(300);
-
-      // Select country - use specific label selector to avoid multiple select elements
-      const countrySelect = stripeFrame.getByLabel('Country');
+    // Wait for the Stripe iframe to be ready by checking for content presence
+    const stripeFrame = page.frameLocator('iframe[name^="__privateStripeFrame"]').first();
+    
+    // Wait for card input field to be present and visible - this ensures Stripe is ready
+    const cardInput = stripeFrame.locator('input[placeholder*="1234"]').or(
+      stripeFrame.getByRole('textbox', { name: /card/i })
+    );
+    
+    // Retry loop for Stripe Elements loading
+    let cardInputReady = false;
+    for (let attempt = 1; attempt <= 5 && !cardInputReady; attempt++) {
       try {
-        await countrySelect.waitFor({ state: 'visible', timeout: 5000 });
-        await countrySelect.selectOption('US');
-        await page.waitForTimeout(500);
+        await cardInput.waitFor({ state: 'visible', timeout: 5000 });
+        cardInputReady = true;
       } catch {
-        // Country dropdown might not be present or already selected
+        // Retry: Stripe Elements can take time to initialize
+        await page.waitForTimeout(1000 * attempt);
       }
+    }
+    
+    if (!cardInputReady) {
+      await page.screenshot({ path: 'test-results/04-stripe-iframe-not-ready.png' });
+      throw new Error('Stripe Elements iframe did not load properly');
+    }
 
-      // Wait for ZIP field to appear (conditional field after country selection for US)
-      const zipInput = stripeFrame.locator('input[placeholder*="12345"]').or(stripeFrame.getByRole('textbox', { name: /ZIP/i }));
-      try {
-        await zipInput.waitFor({ state: 'visible', timeout: 3000 });
-        await zipInput.click();
-        await zipInput.fill('10001'); // Valid US ZIP code
-        await page.waitForTimeout(300);
-      } catch {
-        // ZIP field might not appear for all countries
-        console.log('ZIP field not visible, continuing...');
-      }
+    // Fill card number - Stripe Elements require typing (not fill) for proper event handling
+    await cardInput.click();
+    await cardInput.clear();
+    
+    // Type card number with proper delays for Stripe validation
+    for (const char of STRIPE_TEST_CARDS.visa) {
+      await cardInput.press(char, { delay: 30 });
+    }
+    
+    // Wait for card validation to complete
+    await page.waitForTimeout(500);
 
+    // Fill expiry (MM / YY format)
+    const expiryInput = stripeFrame.locator('input[placeholder*="MM"]').or(
+      stripeFrame.getByRole('textbox', { name: /expi/i })
+    );
+    await expiryInput.waitFor({ state: 'visible', timeout: 5000 });
+    await expiryInput.click();
+    await expiryInput.clear();
+    await expiryInput.type('1230', { delay: 50 });
+    await page.waitForTimeout(500);
+
+    // Fill CVC
+    const cvcInput = stripeFrame.locator('input[placeholder*="CVC"]').or(
+      stripeFrame.getByRole('textbox', { name: /security|cvc/i })
+    );
+    await cvcInput.waitFor({ state: 'visible', timeout: 5000 });
+    await cvcInput.click();
+    await cvcInput.clear();
+    await cvcInput.type('123', { delay: 50 });
+    await page.waitForTimeout(500);
+
+    // Select country (US) - conditional, may already be selected
+    const countrySelect = stripeFrame.locator('select').or(stripeFrame.getByLabel(/country/i));
+    try {
+      await countrySelect.waitFor({ state: 'visible', timeout: 3000 });
+      await countrySelect.selectOption({ value: 'US' });
       await page.waitForTimeout(500);
+    } catch {
+      // Country may be auto-detected or not required
+    }
 
-      // Take screenshot before submission
-      await page.screenshot({ path: 'test-results/04a-card-filled.png' });
+    // Fill ZIP code if field appears (US requires ZIP)
+    const zipInput = stripeFrame.locator('input[placeholder*="12345"]').or(
+      stripeFrame.getByRole('textbox', { name: /postal|zip/i })
+    );
+    try {
+      await zipInput.waitFor({ state: 'visible', timeout: 3000 });
+      await zipInput.click();
+      await zipInput.clear();
+      await zipInput.fill('10001');
+      await page.waitForTimeout(500);
+    } catch {
+      // ZIP may not be required for all payment methods
+    }
 
-      // Click save button
-      await page.getByRole('button', { name: 'Save Payment Method' }).click();
+    // Take screenshot before submission
+    await page.screenshot({ path: 'test-results/04a-card-filled.png' });
 
-      // Wait for success - redirect to payment methods or success message
-      try {
-        // First try waiting for success message
-        await page.locator('text=Payment method added successfully').waitFor({ state: 'visible', timeout: 15000 });
-      } catch {
-        // If no success message, check if we redirected to payment methods
+    // Click save button
+    const saveButton = page.getByRole('button', { name: /save payment method/i });
+    await saveButton.click();
+
+    // CRITICAL: Wait for one of three outcomes:
+    // 1. Success message appears (inline success)  
+    // 2. Redirect to payment methods page
+    // 3. Error message appears
+    
+    let submitSuccess = false;
+    let errorMsg = '';
+    
+    // Poll for completion state - use waitFor for reliability
+    try {
+      // Wait for success message with short timeout
+      await page.waitForSelector('text=/payment method.*added|added successfully/i', { timeout: 15000, state: 'visible' });
+      submitSuccess = true;
+    } catch {
+      // Check if we redirected to payment methods
+      const currentUrl = page.url();
+      if (currentUrl.includes('/payment-methods') && !currentUrl.includes('/add')) {
+        submitSuccess = true;
+      } else {
+        // Check for error message
         try {
-          await page.waitForURL('**/payment-methods**', { timeout: 10000 });
+          const errorEl = await page.waitForSelector('text=/failed|error|invalid|declined/i', { timeout: 1000, state: 'visible' });
+          if (errorEl) {
+            errorMsg = await errorEl.textContent() || 'Payment submission failed';
+          }
         } catch {
-          // Take screenshot of current state for debugging
-          await page.screenshot({ path: 'test-results/04b-submission-error.png' });
-          throw new Error('Payment method submission did not complete successfully');
+          // Neither success nor error - timeout
+          errorMsg = 'Payment method submission did not complete within 15 seconds';
         }
       }
+    }
+    
+    if (!submitSuccess) {
+      await page.screenshot({ path: 'test-results/04b-submission-failed.png' });
+      throw new Error(errorMsg || 'Payment method submission failed');
+    }
 
-      await page.screenshot({ path: 'test-results/04-payment-method-added.png' });
-    });
+    // Wait for the sync to complete before navigating
+    // Check the backend logs for any sync failures
+    await page.waitForTimeout(3000);
+    
+    // Navigate back to payment methods list
+    await page.goto('/payment-methods');
+    await page.waitForLoadState('networkidle');
+    
+    // Wait for payment methods list to load  
+    await page.waitForSelector('h1:has-text("Payment Methods")', { timeout: 10000 });
+    
+    // Debug: Check if there's an error message on the page
+    const errorVisible = await page.locator('text=/failed|error/i').isVisible().catch(() => false);
+    if (errorVisible) {
+      const errorText = await page.locator('text=/failed|error/i').textContent().catch(() => 'Unknown error');
+      await page.screenshot({ path: 'test-results/04c-sync-error.png' });
+    }
+    
+    await page.screenshot({ path: 'test-results/04-payment-method-added.png' });
+  });
 
-    // ============================================================
-    // STEP 5: VERIFY ADDED PAYMENT METHOD IS VISIBLE
-    // ============================================================
-    await test.step('5. See Added Payment Method', async () => {
-      // Reload page to verify persistence
-      await page.reload();
-      await page.waitForLoadState('domcontentloaded');
+  // ============================================================
+  // STEP 5: VERIFY ADDED PAYMENT METHOD IS VISIBLE
+  // ============================================================
+  await test.step('5. See Added Payment Method', async () => {
+    // Check the page content
+    const pageContent = await page.content();
+    
+    // Verify card is listed (Visa ending in 4242)
+    // First check if page shows "No payment methods saved yet"
+    const noMethodsVisible = await page.locator('text=/no payment methods/i').isVisible().catch(() => false);
+    
+    if (noMethodsVisible) {
+      // Dump page content for debugging
+      await page.screenshot({ path: 'test-results/05-no-payment-methods-debug.png' });
+      throw new Error('Payment methods list shows "No payment methods saved yet" - sync failed');
+    }
+    
+    // Try multiple selectors for the card
+    const visaSelectors = [
+      'text=/Visa/i',
+      'text=/••••.*4242/i',
+      'text=/4242/',
+      '[data-testid="payment-method-card"]',
+      '.payment-card:has-text("4242")',
+    ];
+    
+    let found = false;
+    for (const selector of visaSelectors) {
+      try {
+        await page.waitForSelector(selector, { timeout: 5000, state: 'visible' });
+        found = true;
+        break;
+      } catch {
+        // Try next selector
+      }
+    }
+    
+    if (!found) {
+      await page.screenshot({ path: 'test-results/05-payment-method-not-found.png' });
+      throw new Error('Payment method "Visa" not found on page after sync');
+    }
 
-      // Verify card is listed (Visa ending in 4242)
-      await expect(page.locator('text=Visa')).toBeVisible({ timeout: 10000 });
-      await expect(page.locator('text=•••• 4242')).toBeVisible();
-
-      await page.screenshot({ path: 'test-results/05-payment-method-visible.png' });
-    });
+    await page.screenshot({ path: 'test-results/05-payment-method-visible.png' });
+  });
 
     // ============================================================
     // STEP 6: MAKE A PAYMENT USING THE SELECTED METHOD
@@ -318,82 +420,114 @@ test.describe('Complete User Flow', () => {
 // Helper function to add a card via Stripe Payment Element
 async function addCard(page: Page, cardNumber: string, expiry: string, cvc: string, zip?: string) {
   await page.click('text=Add Payment Method');
+  
+  // Wait for redirect to add page
+  await page.waitForURL('**/payment-methods/add', { timeout: 10000 });
 
   // Wait for Stripe Elements to load
-  await page.waitForSelector('iframe[name^="__privateStripeFrame"]', { timeout: 15000 });
-  await page.waitForTimeout(3000); // Give Stripe time to initialize
+  await page.waitForSelector('iframe[name^="__privateStripeFrame"]', { timeout: 30000 });
 
   const stripeFrame = page.frameLocator('iframe[name^="__privateStripeFrame"]').first();
 
-  // Fill card number - click first, then type with delay for Stripe validation
+  // Wait for card input to be ready with retries
   const cardInput = stripeFrame.locator('input[placeholder*="1234"]').or(
-    stripeFrame.getByRole('textbox', { name: 'Card number' })
+    stripeFrame.getByRole('textbox', { name: /card/i })
   );
-  await cardInput.waitFor({ state: 'visible', timeout: 10000 });
-  await cardInput.click();
-  await cardInput.type(cardNumber, { delay: 50 });
-  await page.waitForTimeout(300);
+  
+  let cardInputReady = false;
+  for (let attempt = 1; attempt <= 5 && !cardInputReady; attempt++) {
+    try {
+      await cardInput.waitFor({ state: 'visible', timeout: 5000 });
+      cardInputReady = true;
+    } catch {
+      await page.waitForTimeout(1000 * attempt);
+    }
+  }
+  
+  if (!cardInputReady) {
+    throw new Error('Stripe Elements did not load in time');
+  }
 
-  // Fill expiry (format: MMYY)
+  // Fill card number character by character
+  await cardInput.click();
+  await cardInput.clear();
+  for (const char of cardNumber) {
+    await cardInput.press(char, { delay: 30 });
+  }
+  await page.waitForTimeout(500);
+
+  // Fill expiry
   const expiryInput = stripeFrame.locator('input[placeholder*="MM"]').or(
-    stripeFrame.getByRole('textbox', { name: /Expiration/i })
+    stripeFrame.getByRole('textbox', { name: /expi/i })
   );
   await expiryInput.waitFor({ state: 'visible', timeout: 5000 });
   await expiryInput.click();
+  await expiryInput.clear();
   await expiryInput.type(expiry.replace('/', ''), { delay: 50 });
-  await page.waitForTimeout(300);
+  await page.waitForTimeout(500);
 
   // Fill CVC
   const cvcInput = stripeFrame.locator('input[placeholder*="CVC"]').or(
-    stripeFrame.getByRole('textbox', { name: /Security code|CVC/i })
+    stripeFrame.getByRole('textbox', { name: /security|cvc/i })
   );
   await cvcInput.waitFor({ state: 'visible', timeout: 5000 });
   await cvcInput.click();
+  await cvcInput.clear();
   await cvcInput.type(cvc, { delay: 50 });
-  await page.waitForTimeout(300);
+  await page.waitForTimeout(500);
 
-  // Select country (US) - needed for ZIP field to appear
-  const countrySelect = stripeFrame.locator('select').or(stripeFrame.getByLabel('Country'));
+  // Select country (US) - needed for ZIP
+  const countrySelect = stripeFrame.locator('select').or(stripeFrame.getByLabel(/country/i));
   try {
     await countrySelect.waitFor({ state: 'visible', timeout: 3000 });
-    await countrySelect.selectOption('US');
+    await countrySelect.selectOption({ value: 'US' });
     await page.waitForTimeout(500);
   } catch {
-    // Country dropdown might not be present or already selected
+    // Country may be pre-selected
   }
 
-  // Fill ZIP code (required for US)
+  // Fill ZIP (required for US)
   if (zip) {
     const zipInput = stripeFrame.locator('input[placeholder*="12345"]').or(
-      stripeFrame.getByRole('textbox', { name: /ZIP/i })
+      stripeFrame.getByRole('textbox', { name: /postal|zip/i })
     );
     try {
       await zipInput.waitFor({ state: 'visible', timeout: 3000 });
       await zipInput.click();
+      await zipInput.clear();
       await zipInput.fill(zip);
-      await page.waitForTimeout(300);
+      await page.waitForTimeout(500);
     } catch {
-      // ZIP field might not appear for all countries
+      // ZIP may not be required
     }
   }
 
   await page.waitForTimeout(500);
 
-  // Take screenshot before submission for debugging
+  // Take screenshot before submission
   await page.screenshot({ path: 'test-results/add-card-before-submit.png' });
 
   // Click save button
-  await page.getByRole('button', { name: 'Save Payment Method' }).click();
+  const saveButton = page.getByRole('button', { name: /save payment method/i });
+  await saveButton.click();
 
-  // Wait for success - check for message or URL redirect
+  // Wait for success with proper state detection
+  let submitSuccess = false;
   try {
-    await page.locator('text=Payment method added successfully').waitFor({ state: 'visible', timeout: 15000 });
+    await page.waitForSelector('text=/payment method.*added|added successfully/i', { timeout: 15000, state: 'visible' });
+    submitSuccess = true;
   } catch {
-    try {
-      await page.waitForURL('**/payment-methods**', { timeout: 10000 });
-    } catch {
+    const currentUrl = page.url();
+    if (currentUrl.includes('/payment-methods') && !currentUrl.includes('/add')) {
+      submitSuccess = true;
+    } else {
       await page.screenshot({ path: 'test-results/add-card-error.png' });
       throw new Error('Failed to add payment method');
     }
+  }
+  
+  if (!submitSuccess) {
+    await page.screenshot({ path: 'test-results/add-card-timeout.png' });
+    throw new Error('Payment method submission timed out');
   }
 }

@@ -126,13 +126,10 @@ export class PaymentMethodsService {
       return { clientSecret: existingSetupIntent.client_secret };
     }
 
-    const setupIntentWindow = String(
-      Math.floor(Date.now() / (15 * 60 * 1000)),
-    );
     const idempotencyKey = generateUniqueIdempotencyKey(
       'setup_intent',
       userId,
-      setupIntentWindow,
+      Date.now().toString(),
     );
 
     const setupIntent = await this.stripeService.createSetupIntent(
@@ -218,32 +215,33 @@ export class PaymentMethodsService {
     userId: string,
     stripePaymentMethodId: string,
   ): Promise<PaymentMethod> {
-    const user = await this.ensureStripeCustomer(userId);
+    if (!stripePaymentMethodId) {
+      throw new BadRequestException('stripePaymentMethodId is required');
+    }
 
-    // Fetch the payment method from Stripe
+    const user = await this.ensureStripeCustomer(userId);
     const stripePm = await this.stripeService.retrievePaymentMethod(
       stripePaymentMethodId,
     );
 
-    // Save to database
-    const savedPm = await this.paymentMethodsSql.upsertFromStripe({
-      userId,
-      stripePaymentMethodId: stripePm.id,
-      type: stripePm.type,
-      last4: stripePm.card?.last4 ?? null,
-      brand: stripePm.card?.brand ?? null,
-      expiryMonth: stripePm.card?.exp_month ?? null,
-      expiryYear: stripePm.card?.exp_year ?? null,
-      metadata: stripePm.metadata ?? null,
-      isDefault: user.defaultPaymentMethodId === stripePm.id,
-    });
+    const savedPm = await this.paymentMethodsSql.upsertFromStripeTX(
+      {
+        userId,
+        stripePaymentMethodId: stripePm.id,
+        type: stripePm.type,
+        last4: stripePm.card?.last4 ?? null,
+        brand: stripePm.card?.brand ?? null,
+        expiryMonth: stripePm.card?.exp_month ?? null,
+        expiryYear: stripePm.card?.exp_year ?? null,
+        metadata: stripePm.metadata ?? null,
+        isDefault: user.defaultPaymentMethodId === stripePm.id,
+      },
+      user.defaultPaymentMethodId,
+    );
 
-    // Set as default if this is the user's first payment method
     if (!user.defaultPaymentMethodId) {
-      await this.paymentMethodsSql.setDefault(userId, stripePm.id);
-      await this.usersSql.updateDefaultPaymentMethod(userId, stripePm.id);
       await this.syncStripeDefaultPaymentMethod(
-        user.stripeCustomerId,
+        user.stripeCustomerId!,
         stripePm.id,
       );
     }

@@ -61,7 +61,7 @@ export class PaymentMethodsSqlService {
         "expiryMonth",
         "expiryYear",
         metadata
-      ) VALUES ($1, $2, $3, $4, COALESCE($5, false), $6, $7, $8, $9, $10)
+      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
       ON CONFLICT ("stripePaymentMethodId") DO UPDATE SET
         "userId" = EXCLUDED."userId",
         type = EXCLUDED.type,
@@ -88,6 +88,81 @@ export class PaymentMethodsSqlService {
     );
 
     return mapPaymentMethod(result.rows[0]);
+  }
+
+  async upsertFromStripeTX(
+    data: Partial<PaymentMethod> & {
+      userId: string;
+      stripePaymentMethodId: string;
+      type: string;
+    },
+    currentDefaultId: string | null,
+  ): Promise<PaymentMethod> {
+    const result = await this.database.transaction(async (client) => {
+      const insertResult = await this.database.query(
+        `INSERT INTO payment_methods (
+          id,
+          "userId",
+          "stripePaymentMethodId",
+          type,
+          "isDefault",
+          last4,
+          brand,
+          "expiryMonth",
+          "expiryYear",
+          metadata
+        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+        ON CONFLICT ("stripePaymentMethodId") DO UPDATE SET
+          "userId" = EXCLUDED."userId",
+          type = EXCLUDED.type,
+          "isDefault" = EXCLUDED."isDefault",
+          last4 = EXCLUDED.last4,
+          brand = EXCLUDED.brand,
+          "expiryMonth" = EXCLUDED."expiryMonth",
+          "expiryYear" = EXCLUDED."expiryYear",
+          metadata = EXCLUDED.metadata,
+          "updatedAt" = NOW()
+        RETURNING *`,
+        [
+          randomUUID(),
+          data.userId,
+          data.stripePaymentMethodId,
+          data.type,
+          data.isDefault ?? false,
+          data.last4 ?? null,
+          data.brand ?? null,
+          data.expiryMonth ?? null,
+          data.expiryYear ?? null,
+          data.metadata ?? null,
+        ],
+        client,
+      );
+
+      const pm = insertResult.rows[0];
+
+      if (!currentDefaultId) {
+        await this.database.query(
+          'UPDATE payment_methods SET "isDefault" = false WHERE "userId" = $1',
+          [data.userId],
+          client,
+        );
+        await this.database.query(
+          'UPDATE payment_methods SET "isDefault" = true WHERE id = $1',
+          [pm.id],
+          client,
+        );
+        await this.database.query(
+          'UPDATE users SET "defaultPaymentMethodId" = $2 WHERE id = $1',
+          [data.userId, data.stripePaymentMethodId],
+          client,
+        );
+        pm.isDefault = true;
+      }
+
+      return pm;
+    });
+
+    return mapPaymentMethod(result);
   }
 
   async setDefault(

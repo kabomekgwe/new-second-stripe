@@ -16,19 +16,28 @@ describe('PaymentMethodHandler', () => {
   function buildPaymentMethodEvent(
     pm: Partial<Stripe.PaymentMethod>,
   ): Stripe.Event {
-    const card = {
+    const card: Stripe.PaymentMethod.Card = {
       last4: '4242',
-      brand: 'visa' as const,
+      brand: 'visa',
       exp_month: 12,
       exp_year: 2025,
       checks: { address_line1_check: null, address_postal_code_check: null, cvc_check: null },
       country: 'US',
       fingerprint: 'fp_test',
-      funding: 'credit' as const,
+      funding: 'credit',
       generated_from: null,
       networks: { available: ['visa'], preferred: 'visa' },
       three_d_secure_usage: { supported: true },
       wallet: null,
+      display_brand: null,
+      regulated_status: 'unregulated',
+    };
+    const billingDetails: Stripe.PaymentMethod.BillingDetails = {
+      address: { city: null, country: null, line1: null, line2: null, postal_code: null, state: null },
+      email: null,
+      name: null,
+      phone: null,
+      tax_id: null,
     };
     return {
       id: 'evt_pm_test',
@@ -38,8 +47,8 @@ describe('PaymentMethodHandler', () => {
           id: 'pm_test',
           type: 'card',
           customer: 'cus_test',
-          card,
-          billing_details: { address: {}, email: null, name: null, phone: null, tax_id: null },
+          card: card as unknown as Stripe.PaymentMethod.Card,
+          billing_details: billingDetails,
           ...pm,
         } as Stripe.PaymentMethod,
       },
@@ -60,12 +69,6 @@ describe('PaymentMethodHandler', () => {
         buildPaymentMethodEvent({
           id: 'pm_visa',
           customer: 'cus_test',
-          card: {
-            last4: '4242',
-            brand: 'visa',
-            exp_month: 12,
-            exp_year: 2025,
-          },
         }),
       );
 
@@ -84,16 +87,21 @@ describe('PaymentMethodHandler', () => {
         await cb({});
       });
 
-      const event = buildPaymentMethodEvent({
-        id: 'pm_meta',
-        billing_details: {
-          name: 'John Doe',
-          email: 'john@example.com',
-        },
-        metadata: { source: 'checkout', orderId: '123' },
-      });
+      const billingDetailsWithInfo: Stripe.PaymentMethod.BillingDetails = {
+        address: { city: null, country: null, line1: null, line2: null, postal_code: null, state: null },
+        email: 'john@example.com',
+        name: 'John Doe',
+        phone: null,
+        tax_id: null,
+      };
 
-      await handler.handleAttached(event);
+      await handler.handleAttached(
+        buildPaymentMethodEvent({
+          id: 'pm_meta',
+          billing_details: billingDetailsWithInfo,
+          metadata: { source: 'checkout', orderId: '123' },
+        }),
+      );
 
       const insertCall = database.query.mock.calls.find((call) =>
         call[0].includes('INSERT INTO payment_methods'),
@@ -140,11 +148,12 @@ describe('PaymentMethodHandler', () => {
       await handler.handleAttached(buildPaymentMethodEvent({ id: 'pm_first' }));
 
       expect(database.transaction).toHaveBeenCalled();
-      expect(database.query).toHaveBeenCalledWith(
-        expect.stringContaining('UPDATE payment_methods SET "isDefault" = true'),
-        expect.any(Array),
-        expect.any(Object),
+      
+      const setIsDefaultCall = database.query.mock.calls.find(
+        (call) => typeof call[0] === 'string' && call[0].includes('"isDefault" = true'),
       );
+      expect(setIsDefaultCall).toBeDefined();
+      expect(setIsDefaultCall[1]).toEqual(['user_1', 'pm_first']);
     });
 
     it('does not set default when user already has one', async () => {
@@ -167,12 +176,21 @@ describe('PaymentMethodHandler', () => {
         await cb({});
       });
 
+      const sepaDebit: Stripe.PaymentMethod.SepaDebit = {
+        last4: '1234',
+        bank_code: '123',
+        branch_code: '12345',
+        country: 'DE',
+        fingerprint: 'fp_sepa',
+        generated_from: null,
+      };
+
       await handler.handleAttached(
         buildPaymentMethodEvent({
           id: 'pm_sepa',
           type: 'sepa_debit',
-          card: null,
-          sepa_debit: { last4: '1234', bank_code: '123' },
+          card: undefined,
+          sepa_debit: sepaDebit,
         }),
       );
 

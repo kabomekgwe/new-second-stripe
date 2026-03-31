@@ -3,17 +3,18 @@ import { WebhooksService } from '../webhooks.service';
 import { PostgresService } from '../../database/postgres.service';
 import { StripeService } from '../../stripe/stripe.service';
 import { ConfigService } from '@nestjs/config';
-import {
-  PaymentIntentHandler,
-  InvoiceHandler,
-  SubscriptionHandler,
-} from './index';
+import { PaymentIntentHandler } from './payment-intent.handler';
+import { InvoiceHandler } from './invoice.handler';
+import { SubscriptionHandler } from './subscription.handler';
+import { SetupIntentHandler } from './setup-intent.handler';
+import { PaymentMethodHandler } from './payment-method.handler';
+import { CheckoutSessionHandler } from './checkout-session.handler';
 import { WebhookEventStatus } from '@stripe-app/shared';
 
 describe('Webhook Failure and Retry Logic', () => {
   let service: WebhooksService;
   let database: jest.Mocked<PostgresService>;
-  let stripeService: jest.Mocked<StripeService>;
+  let paymentIntentHandler: jest.Mocked<PaymentIntentHandler>;
 
   const mockEvent = {
     id: 'evt_123',
@@ -23,6 +24,10 @@ describe('Webhook Failure and Retry Logic', () => {
         id: 'pi_123',
         amount: 1000,
       },
+    },
+    object: {
+      id: 'pi_123',
+      amount: 1000,
     },
   };
 
@@ -34,6 +39,7 @@ describe('Webhook Failure and Retry Logic', () => {
           provide: PostgresService,
           useValue: {
             query: jest.fn(),
+            transaction: jest.fn(),
           },
         },
         {
@@ -52,24 +58,46 @@ describe('Webhook Failure and Retry Logic', () => {
         {
           provide: PaymentIntentHandler,
           useValue: {
-            handleSucceeded: jest.fn(),
-            handleFailed: jest.fn(),
+            handleSucceeded: jest.fn().mockResolvedValue(undefined),
+            handleFailed: jest.fn().mockResolvedValue(undefined),
           },
         },
         {
           provide: InvoiceHandler,
           useValue: {
-            handleFinalized: jest.fn(),
-            handlePaid: jest.fn(),
-            handlePaymentFailed: jest.fn(),
+            handleFinalized: jest.fn().mockResolvedValue(undefined),
+            handlePaid: jest.fn().mockResolvedValue(undefined),
+            handlePaymentFailed: jest.fn().mockResolvedValue(undefined),
           },
         },
         {
           provide: SubscriptionHandler,
           useValue: {
-            handleCreated: jest.fn(),
-            handleUpdated: jest.fn(),
-            handleDeleted: jest.fn(),
+            handleCreated: jest.fn().mockResolvedValue(undefined),
+            handleUpdated: jest.fn().mockResolvedValue(undefined),
+            handleDeleted: jest.fn().mockResolvedValue(undefined),
+          },
+        },
+        {
+          provide: SetupIntentHandler,
+          useValue: {
+            handleSucceeded: jest.fn().mockResolvedValue(undefined),
+          },
+        },
+        {
+          provide: PaymentMethodHandler,
+          useValue: {
+            handleAttached: jest.fn().mockResolvedValue(undefined),
+            handleDetached: jest.fn().mockResolvedValue(undefined),
+          },
+        },
+        {
+          provide: CheckoutSessionHandler,
+          useValue: {
+            handleCompleted: jest.fn().mockResolvedValue(undefined),
+            handleAsyncSucceeded: jest.fn().mockResolvedValue(undefined),
+            handleAsyncFailed: jest.fn().mockResolvedValue(undefined),
+            handleExpired: jest.fn().mockResolvedValue(undefined),
           },
         },
       ],
@@ -77,7 +105,7 @@ describe('Webhook Failure and Retry Logic', () => {
 
     service = module.get<WebhooksService>(WebhooksService);
     database = module.get(PostgresService);
-    stripeService = module.get(StripeService);
+    paymentIntentHandler = module.get(PaymentIntentHandler);
   });
 
   describe('Duplicate Event Handling', () => {
@@ -101,22 +129,23 @@ describe('Webhook Failure and Retry Logic', () => {
 
       await service.handleEvent(Buffer.from('{}'), 'sig');
 
-      // Should not reprocess
-      const processingCalls = database.query.mock.calls.filter(
-        (call) => call[1]?.[1] === 'PROCESSING',
+      expect(database.query).toHaveBeenCalledWith(
+        expect.stringContaining('SELECT'),
+        ['evt_123'],
       );
-      expect(processingCalls.length).toBeGreaterThanOrEqual(1);
     });
   });
 
   describe('Failure Handling', () => {
     it('should mark event as FAILED when handler throws', async () => {
-      database.query.mockResolvedValueOnce({ rows: [] } as any); // No existing event
-      database.query.mockResolvedValueOnce({} as any); // Insert processing
+      database.query
+        .mockResolvedValueOnce({ rows: [] } as any)
+        .mockResolvedValueOnce({} as any)
+        .mockResolvedValueOnce({} as any);
 
-      const paymentIntentHandler = {
-        handleSucceeded: jest.fn().mockRejectedValue(new Error('Database error')),
-      };
+      paymentIntentHandler.handleSucceeded.mockRejectedValueOnce(
+        new Error('Database error'),
+      );
 
       await expect(
         service.handleEvent(Buffer.from('{}'), 'sig'),
@@ -133,8 +162,9 @@ describe('Webhook Failure and Retry Logic', () => {
 
       const updateCall = database.query.mock.calls.find((call) =>
         call[0].includes('UPDATE webhook_events'),
-      );
+      )!;
       expect(updateCall).toBeDefined();
+      expect(updateCall[1]).toContain(WebhookEventStatus.PROCESSED);
     });
   });
 
@@ -142,11 +172,26 @@ describe('Webhook Failure and Retry Logic', () => {
     it('should store error message on failure', async () => {
       database.query
         .mockResolvedValueOnce({ rows: [] } as any)
+        .mockResolvedValueOnce({} as any)
         .mockResolvedValueOnce({} as any);
 
-      const errorMessage = 'Connection timeout';
+      paymentIntentHandler.handleSucceeded.mockRejectedValueOnce(
+        new Error('Connection timeout'),
+      );
 
-      await expect(service.handleEvent(Buffer.from('{}'), 'sig')).rejects.toThrow();
+      await expect(
+        service.handleEvent(Buffer.from('{}'), 'sig'),
+      ).rejects.toThrow('Connection timeout');
+
+      const failedUpdateCall = database.query.mock.calls.find(
+        (call) =>
+          typeof call[0] === 'string' &&
+          call[0].includes('UPDATE') &&
+          Array.isArray(call[1]) &&
+          call[1][1] === WebhookEventStatus.FAILED,
+      )!;
+      expect(failedUpdateCall).toBeDefined();
+      expect((failedUpdateCall[1] as any[])[2]).toBe('Connection timeout');
     });
   });
 });

@@ -41,6 +41,9 @@ export class PaymentMethodHandler {
       brand: stripePm.card?.brand ?? null,
       expiryMonth: stripePm.card?.exp_month ?? null,
       expiryYear: stripePm.card?.exp_year ?? null,
+      billingEmailAddress: stripePm.billing_details?.email ?? null,
+      billingName: stripePm.billing_details?.name ?? null,
+      stripeMetadata: stripePm.metadata ?? {},
     };
 
     await this.upsertPaymentMethod(stripePm.id, pmData);
@@ -109,6 +112,9 @@ export class PaymentMethodHandler {
       brand: string | null;
       expiryMonth: number | null;
       expiryYear: number | null;
+      billingEmailAddress: string | null;
+      billingName: string | null;
+      stripeMetadata: Record<string, unknown>;
     },
   ): Promise<void> {
     await this.database.query(
@@ -121,8 +127,11 @@ export class PaymentMethodHandler {
           last4,
           brand,
           "expiryMonth",
-          "expiryYear"
-        ) VALUES (gen_random_uuid(), $1, $2, $3, $4, $5, $6, $7)
+          "expiryYear",
+          "billingEmailAddress",
+          "billingName",
+          "stripeMetadata"
+        ) VALUES (gen_random_uuid(), $1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
         ON CONFLICT ("stripePaymentMethodId") DO UPDATE SET
           "userId" = EXCLUDED."userId",
           type = EXCLUDED.type,
@@ -130,6 +139,9 @@ export class PaymentMethodHandler {
           brand = EXCLUDED.brand,
           "expiryMonth" = EXCLUDED."expiryMonth",
           "expiryYear" = EXCLUDED."expiryYear",
+          "billingEmailAddress" = EXCLUDED."billingEmailAddress",
+          "billingName" = EXCLUDED."billingName",
+          "stripeMetadata" = EXCLUDED."stripeMetadata",
           "updatedAt" = now()
       `,
       [
@@ -140,6 +152,9 @@ export class PaymentMethodHandler {
         pmData.brand,
         pmData.expiryMonth,
         pmData.expiryYear,
+        pmData.billingEmailAddress,
+        pmData.billingName,
+        JSON.stringify(pmData.stripeMetadata),
       ],
     );
   }

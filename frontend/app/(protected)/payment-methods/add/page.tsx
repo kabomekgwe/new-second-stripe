@@ -42,7 +42,7 @@ export default function AddPaymentMethodPage() {
           href="/payment-methods"
           className="inline-flex items-center text-sm text-gray-500 hover:text-gray-700"
         >
-          <svg className="mr-1 h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+          <svg aria-hidden="true" className="mr-1 h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
           </svg>
           Back to Payment Methods
@@ -92,7 +92,7 @@ function SetupForm({ userEmail, userName }: SetupFormProps) {
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
-    if (!stripe || !elements) return;
+    if (!stripe || !elements || submitting) return;
 
     setSubmitting(true);
     setError('');
@@ -112,32 +112,67 @@ function SetupForm({ userEmail, userName }: SetupFormProps) {
     });
 
     if (error) {
+      // Handle already-succeeded SetupIntent (e.g., user retried after previous success)
+      if (error.code === 'setup_intent_unexpected_state' && error.setup_intent?.status === 'succeeded') {
+        const alreadySucceededPmId = error.setup_intent.payment_method as string | null;
+        if (alreadySucceededPmId) {
+          try {
+            await syncPaymentMethod(alreadySucceededPmId).unwrap();
+            setSuccess(true);
+          } catch (syncError) {
+            console.error('Failed to sync already-succeeded payment method:', JSON.stringify(syncError));
+            setError('Payment method was already confirmed but failed to save. Please refresh the page.');
+          } finally {
+            setSubmitting(false);
+          }
+          return;
+        }
+      }
+
       setError(error.message || 'Setup failed. Please try again.');
       setSubmitting(false);
       return;
     }
 
-    // Log the setup intent for debugging
-    console.log('Setup intent result:', {
-      id: setupIntent?.id,
-      status: setupIntent?.status,
-      payment_method: setupIntent?.payment_method,
-    });
-
-    // Check if setup succeeded
-    if (setupIntent?.status !== 'succeeded') {
-      setError('Payment setup did not complete. Please try again.');
+    if (!setupIntent) {
+      setError('No setup intent returned. Please try again.');
       setSubmitting(false);
       return;
     }
 
-    // Extract payment method ID
-    const setupPaymentMethodId =
+    console.log('Setup intent result:', {
+      id: setupIntent.id,
+      status: setupIntent.status,
+      payment_method: setupIntent.payment_method,
+    });
+
+    if (setupIntent.status !== 'succeeded') {
+      setError(`Payment setup ${setupIntent.status}. Please try again.`);
+      setSubmitting(false);
+      return;
+    }
+
+    let paymentMethodId: string | null =
       typeof setupIntent.payment_method === 'string'
         ? setupIntent.payment_method
         : (setupIntent.payment_method as { id: string })?.id ?? null;
 
-    if (!setupPaymentMethodId) {
+    if (!paymentMethodId && setupIntent.id) {
+      console.log('Retrieving setup intent to get payment method...');
+      try {
+        const retrievedIntent = await stripe.retrieveSetupIntent(setupIntent.client_secret ?? '');
+        if (retrievedIntent.setupIntent?.payment_method) {
+          paymentMethodId =
+            typeof retrievedIntent.setupIntent.payment_method === 'string'
+              ? retrievedIntent.setupIntent.payment_method
+              : (retrievedIntent.setupIntent.payment_method as { id: string })?.id ?? null;
+        }
+      } catch (retrieveError) {
+        console.error('Failed to retrieve setup intent:', retrieveError);
+      }
+    }
+
+    if (!paymentMethodId) {
       console.error('No payment method ID in setup intent:', setupIntent);
       setError('Payment method was not properly attached. Please try again.');
       setSubmitting(false);
@@ -146,13 +181,11 @@ function SetupForm({ userEmail, userName }: SetupFormProps) {
 
     // Sync the payment method to the database
     try {
-      await syncPaymentMethod(setupPaymentMethodId).unwrap();
+      await syncPaymentMethod(paymentMethodId).unwrap();
       setSuccess(true);
     } catch (syncError) {
-      console.error('Failed to sync payment method:', syncError);
-      // Show success anyway - the payment method was added to Stripe
-      // The webhook will eventually process it, or user can retry
-      setSuccess(true);
+      console.error('Failed to sync payment method:', JSON.stringify(syncError));
+      setError('Payment method was confirmed but failed to save. Please refresh the page — it may appear shortly via webhook.');
     } finally {
       setSubmitting(false);
     }

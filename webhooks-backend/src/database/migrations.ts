@@ -129,4 +129,17 @@ export const SQL_MIGRATIONS: SqlMigration[] = [
       );
     `,
   },
+  {
+    id: '002_add_payment_method_billing_fields',
+    sql: `
+      ALTER TABLE payment_methods
+        ADD COLUMN IF NOT EXISTS "billingEmailAddress" varchar,
+        ADD COLUMN IF NOT EXISTS "billingName" varchar,
+        ADD COLUMN IF NOT EXISTS "stripeMetadata" jsonb;
+      
+      COMMENT ON COLUMN payment_methods."billingEmailAddress" IS 'Billing email from Stripe payment method';
+      COMMENT ON COLUMN payment_methods."billingName" IS 'Billing name from Stripe payment method';
+      COMMENT ON COLUMN payment_methods."stripeMetadata" IS 'Full metadata from Stripe payment method object';
+    `,
+  },
 ];

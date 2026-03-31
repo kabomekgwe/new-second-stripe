@@ -8,13 +8,17 @@ import {
   UseGuards,
   Req,
   Logger,
+  BadRequestException,
 } from '@nestjs/common';
 import { Request } from 'express';
+import { IsString, Matches } from 'class-validator';
 import { User } from '@stripe-app/shared';
 import { AuthenticatedGuard } from '../auth/guards/authenticated.guard';
 import { PaymentMethodsService } from './payment-methods.service';
 
 class SyncPaymentMethodDto {
+  @IsString()
+  @Matches(/^pm_[a-zA-Z0-9]+$/, { message: 'Invalid Stripe payment method ID format' })
   stripePaymentMethodId!: string;
 }
 
@@ -49,16 +53,24 @@ export class PaymentMethodsController {
     @Req() req: Request,
     @Body() body: SyncPaymentMethodDto,
   ) {
-    this.logger.log(`Syncing payment method ${body.stripePaymentMethodId} for user ${(req.user as User).id}`);
+    const pmId = body.stripePaymentMethodId;
+    const userId = (req.user as User).id;
+    this.logger.log(`Syncing payment method ${pmId} for user ${userId} (body keys: ${Object.keys(body).join(', ')})`);
+
+    if (!pmId) {
+      this.logger.error(`Received empty stripePaymentMethodId. Raw body: ${JSON.stringify(body)}`);
+      throw new BadRequestException('stripePaymentMethodId is required');
+    }
+
     try {
       const result = await this.paymentMethodsService.syncAndSavePaymentMethod(
-        (req.user as User).id,
-        body.stripePaymentMethodId,
+        userId,
+        pmId,
       );
-      this.logger.log(`Successfully synced payment method ${body.stripePaymentMethodId}`);
+      this.logger.log(`Successfully synced payment method ${pmId}`);
       return result;
     } catch (error) {
-      this.logger.error(`Failed to sync payment method ${body.stripePaymentMethodId}: ${error.message}`);
+      this.logger.error(`Failed to sync payment method ${pmId}: ${error.message}`);
       throw error;
     }
   }

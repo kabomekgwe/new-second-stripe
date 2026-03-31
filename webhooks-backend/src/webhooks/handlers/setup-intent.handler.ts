@@ -62,8 +62,11 @@ export class SetupIntentHandler {
           last4,
           brand,
           "expiryMonth",
-          "expiryYear"
-        ) VALUES (gen_random_uuid(), $1, $2, $3, $4, $5, $6, $7)
+          "expiryYear",
+          "billingEmailAddress",
+          "billingName",
+          "stripeMetadata"
+        ) VALUES (gen_random_uuid(), $1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
         ON CONFLICT ("stripePaymentMethodId") DO UPDATE SET
           "userId" = EXCLUDED."userId",
           type = EXCLUDED.type,
@@ -71,6 +74,9 @@ export class SetupIntentHandler {
           brand = EXCLUDED.brand,
           "expiryMonth" = EXCLUDED."expiryMonth",
           "expiryYear" = EXCLUDED."expiryYear",
+          "billingEmailAddress" = EXCLUDED."billingEmailAddress",
+          "billingName" = EXCLUDED."billingName",
+          "stripeMetadata" = EXCLUDED."stripeMetadata",
           "updatedAt" = now()
       `,
       [
@@ -81,29 +87,42 @@ export class SetupIntentHandler {
         stripePm.card?.brand ?? null,
         stripePm.card?.exp_month ?? null,
         stripePm.card?.exp_year ?? null,
+        stripePm.billing_details?.email ?? null,
+        stripePm.billing_details?.name ?? null,
+        JSON.stringify(stripePm.metadata ?? {}),
       ],
     );
 
-    if (!user.defaultPaymentMethodId) {
-      await this.database.transaction(async (client) => {
-        await this.database.query(
-          'UPDATE payment_methods SET "isDefault" = false, "updatedAt" = now() WHERE "userId" = $1',
-          [user.id],
-          client,
-        );
-        await this.database.query(
-          `UPDATE payment_methods
-           SET "isDefault" = true, "updatedAt" = now()
-           WHERE "userId" = $1 AND "stripePaymentMethodId" = $2`,
-          [user.id, stripePm.id],
-          client,
-        );
-        await this.database.query(
-          'UPDATE users SET "defaultPaymentMethodId" = $2, "updatedAt" = now() WHERE id = $1',
-          [user.id, stripePm.id],
-          client,
-        );
-      });
+    await this.setDefaultPaymentMethod(user.id, stripePm.id, user.defaultPaymentMethodId);
+  }
+
+  private async setDefaultPaymentMethod(
+    userId: string,
+    stripePaymentMethodId: string,
+    existingDefaultId: string | null,
+  ): Promise<void> {
+    if (existingDefaultId) {
+      return;
     }
+
+    await this.database.transaction(async (client) => {
+      await this.database.query(
+        'UPDATE payment_methods SET "isDefault" = false, "updatedAt" = now() WHERE "userId" = $1',
+        [userId],
+        client,
+      );
+      await this.database.query(
+        `UPDATE payment_methods
+         SET "isDefault" = true, "updatedAt" = now()
+         WHERE "userId" = $1 AND "stripePaymentMethodId" = $2`,
+        [userId, stripePaymentMethodId],
+        client,
+      );
+      await this.database.query(
+        'UPDATE users SET "defaultPaymentMethodId" = $2, "updatedAt" = now() WHERE id = $1',
+        [userId, stripePaymentMethodId],
+        client,
+      );
+    });
   }
 }
