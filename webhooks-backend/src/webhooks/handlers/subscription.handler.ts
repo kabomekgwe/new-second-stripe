@@ -59,10 +59,13 @@ export class SubscriptionHandler {
   private async upsertSubscription(
     subscription: Stripe.Subscription,
   ): Promise<void> {
-    const stripeSubscription = subscription as Stripe.Subscription & {
-      current_period_start?: number;
-      current_period_end?: number;
-    };
+    const rawSub = subscription as unknown as Record<string, unknown>;
+    const periodStart = typeof rawSub.current_period_start === 'number'
+      ? new Date(rawSub.current_period_start * 1000)
+      : null;
+    const periodEnd = typeof rawSub.current_period_end === 'number'
+      ? new Date(rawSub.current_period_end * 1000)
+      : null;
     const user = await this.findUser(subscription);
     if (!user) {
       this.logger.warn(
@@ -110,8 +113,8 @@ export class SubscriptionHandler {
         subscriptionItem.id,
         subscriptionItem.price.id,
         subscription.status as BillingSubscriptionStatus,
-        this.toPeriodDate(stripeSubscription.current_period_start ?? null),
-        this.toPeriodEndDate(stripeSubscription.current_period_end ?? null),
+        periodStart,
+        periodEnd,
         subscription.cancel_at_period_end,
         subscription.canceled_at
           ? new Date(subscription.canceled_at * 1000)
@@ -153,7 +156,7 @@ export class SubscriptionHandler {
     }
 
     const value = new Date(timestamp * 1000);
-    return new Date(value.getFullYear(), value.getMonth(), value.getDate());
+    return new Date(Date.UTC(value.getUTCFullYear(), value.getUTCMonth(), value.getUTCDate()));
   }
 
   private toPeriodEndDate(timestamp: number | null): Date | null {
@@ -162,6 +165,6 @@ export class SubscriptionHandler {
     }
 
     const value = new Date((timestamp - 1) * 1000);
-    return new Date(value.getFullYear(), value.getMonth(), value.getDate());
+    return new Date(Date.UTC(value.getUTCFullYear(), value.getUTCMonth(), value.getUTCDate()));
   }
 }

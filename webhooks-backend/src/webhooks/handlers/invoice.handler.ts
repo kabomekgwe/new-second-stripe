@@ -101,8 +101,16 @@ export class InvoiceHandler {
         continue;
       }
 
+      this.logger.debug(
+        `Invoice line period raw timestamps: start=${line.period.start}, end=${line.period.end}`,
+      );
+
       const billingPeriodStart = this.toPeriodDate(line.period.start);
       const billingPeriodEnd = this.toPeriodEndDate(line.period.end);
+
+      this.logger.debug(
+        `Computed billing period: start=${billingPeriodStart.toISOString()}, end=${billingPeriodEnd.toISOString()}`,
+      );
 
       const chargeResult = await this.database.query<{ id: string }>(
         `
@@ -117,6 +125,12 @@ export class InvoiceHandler {
         [subscriptionId, subscriptionItemId, billingPeriodStart, billingPeriodEnd],
       );
       const charge = chargeResult.rows[0] ?? null;
+
+      this.logger.debug(
+        charge
+          ? `Matched usage charge id=${charge.id} for subscriptionItem=${subscriptionItemId}`
+          : `No matching usage charge found for subscriptionItem=${subscriptionItemId} period=${billingPeriodStart.toISOString()}–${billingPeriodEnd.toISOString()}`,
+      );
 
       if (!charge || chargeIds.has(charge.id)) {
         continue;
@@ -175,11 +189,11 @@ export class InvoiceHandler {
 
   private toPeriodDate(timestamp: number): Date {
     const value = new Date(timestamp * 1000);
-    return new Date(value.getFullYear(), value.getMonth(), value.getDate());
+    return new Date(Date.UTC(value.getUTCFullYear(), value.getUTCMonth(), value.getUTCDate()));
   }
 
   private toPeriodEndDate(timestamp: number): Date {
     const value = new Date((timestamp - 1) * 1000);
-    return new Date(value.getFullYear(), value.getMonth(), value.getDate());
+    return new Date(Date.UTC(value.getUTCFullYear(), value.getUTCMonth(), value.getUTCDate()));
   }
 }

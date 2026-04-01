@@ -28,10 +28,18 @@ export class BillingService {
       '',
     );
     const nodeEnv = this.configService.get<string>('NODE_ENV', 'development');
-    if (nodeEnv === 'production' && this.billingPriceId.endsWith('_xxx')) {
-      throw new Error(
-        'STRIPE_BILLING_METERED_PRICE_ID must be configured with a real value',
-      );
+    if (nodeEnv === 'production') {
+      if (!this.billingPriceId || this.billingPriceId.endsWith('_xxx')) {
+        throw new Error(
+          'STRIPE_BILLING_METERED_PRICE_ID must be configured with a real value',
+        );
+      }
+    } else {
+      if (!this.billingPriceId) {
+        this.logger.warn(
+          'STRIPE_BILLING_METERED_PRICE_ID is not set — billing features will not work',
+        );
+      }
     }
   }
 
@@ -196,10 +204,15 @@ export class BillingService {
     userId: string,
     subscription: Stripe.Subscription,
   ): Promise<BillingSubscription> {
-    const stripeSubscription = subscription as Stripe.Subscription & {
-      current_period_start?: number;
-      current_period_end?: number;
-    };
+    const rawSub = subscription as unknown as Record<string, unknown>;
+    const periodStart =
+      typeof rawSub.current_period_start === 'number'
+        ? new Date(rawSub.current_period_start * 1000)
+        : null;
+    const periodEnd =
+      typeof rawSub.current_period_end === 'number'
+        ? new Date(rawSub.current_period_end * 1000)
+        : null;
     const subscriptionItem = subscription.items.data[0];
     if (!subscriptionItem) {
       throw new Error(
@@ -213,12 +226,8 @@ export class BillingService {
       stripeSubscriptionItemId: subscriptionItem.id,
       stripePriceId: subscriptionItem.price.id,
       status: subscription.status as BillingSubscriptionStatus,
-      currentPeriodStart: stripeSubscription.current_period_start
-        ? new Date(stripeSubscription.current_period_start * 1000)
-        : null,
-      currentPeriodEnd: stripeSubscription.current_period_end
-        ? new Date(stripeSubscription.current_period_end * 1000)
-        : null,
+      currentPeriodStart: periodStart,
+      currentPeriodEnd: periodEnd,
       cancelAtPeriodEnd: subscription.cancel_at_period_end,
       canceledAt: subscription.canceled_at
         ? new Date(subscription.canceled_at * 1000)
@@ -232,20 +241,28 @@ export class BillingService {
     end: Date;
   } {
     const start = new Date(
-      referenceDate.getFullYear(),
-      referenceDate.getMonth(),
-      1,
+      Date.UTC(referenceDate.getUTCFullYear(), referenceDate.getUTCMonth(), 1),
     );
     const end = new Date(
-      referenceDate.getFullYear(),
-      referenceDate.getMonth() + 1,
-      0,
+      Date.UTC(
+        referenceDate.getUTCFullYear(),
+        referenceDate.getUTCMonth() + 1,
+        0,
+      ),
     );
     return {
-      key: `${start.getFullYear()}-${String(start.getMonth() + 1).padStart(2, '0')}`,
+      key: `${referenceDate.getUTCFullYear()}-${String(referenceDate.getUTCMonth() + 1).padStart(2, '0')}`,
       start,
       end,
     };
+  }
+
+  async checkBillingHealth(): Promise<{
+    meterEventName: string;
+    priceId: string;
+  }> {
+    const meterEventName = await this.getBillingMeterEventName();
+    return { meterEventName, priceId: this.getBillingPriceId() };
   }
 
   private getBillingPriceId(): string {
