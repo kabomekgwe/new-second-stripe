@@ -1,6 +1,7 @@
 'use client';
 
 import { useGetPaymentsQuery } from '@/lib/store/payments-api';
+import { formatPence } from './payment-utils';
 
 const STATUS_STYLES: Record<string, string> = {
   succeeded: 'bg-green-100 text-green-700',
@@ -9,10 +10,6 @@ const STATUS_STYLES: Record<string, string> = {
   requires_action: 'bg-orange-100 text-orange-700',
   canceled: 'bg-gray-100 text-gray-600',
 };
-
-function formatPence(pence: number): string {
-  return (pence / 100).toFixed(2);
-}
 
 function formatStatus(status: string): string {
   return status.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase());
