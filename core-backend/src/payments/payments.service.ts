@@ -39,7 +39,7 @@ export class PaymentsService {
   ) {
     this.frontendUrl = this.configService.get<string>(
       'FRONTEND_URL',
-      'http://localhost:300',
+      'http://localhost:3000',
     );
   }
 

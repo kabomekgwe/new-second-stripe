@@ -1,0 +1,57 @@
+- generic [active] [ref=e1]:
+  - generic [ref=e27]:
+    - heading "Create an account" [level=1] [ref=e28]
+    - generic [ref=e46]: "{\"status\":\"FETCH_ERROR\",\"error\":\"TypeError: Failed to fetch\"}"
+    - generic [ref=e29]:
+      - generic [ref=e30]:
+        - generic [ref=e31]: Full name
+        - textbox "Full name" [ref=e32]:
+          - /placeholder: John Doe
+          - text: Codex Debug
+      - generic [ref=e33]:
+        - generic [ref=e34]: Email
+        - textbox "Email" [ref=e35]:
+          - /placeholder: you@example.com
+          - text: codexdebug2@example.com
+      - generic [ref=e36]:
+        - generic [ref=e37]: Password
+        - textbox "Password" [ref=e38]:
+          - /placeholder: ••••••••
+          - text: Password123
+      - generic [ref=e39]:
+        - generic [ref=e40]: Country
+        - combobox "Country" [ref=e41]:
+          - option "Select a country" [disabled]
+          - option "United Kingdom" [selected]
+          - option "United States"
+          - option "Canada"
+          - option "Australia"
+          - option "Germany"
+          - option "France"
+          - option "Spain"
+          - option "Italy"
+          - option "Netherlands"
+          - option "Sweden"
+          - option "Norway"
+          - option "Denmark"
+          - option "Ireland"
+          - option "New Zealand"
+          - option "Japan"
+          - option "Singapore"
+      - button "Create account" [ref=e42]
+    - paragraph [ref=e43]:
+      - text: Already have an account?
+      - link "Sign in" [ref=e44] [cursor=pointer]:
+        - /url: /auth/login
+  - generic [ref=e20] [cursor=pointer]:
+    - button "Open Next.js Dev Tools" [ref=e21]:
+      - img [ref=e22]
+    - generic [ref=e47]:
+      - button "Open issues overlay" [ref=e48]:
+        - generic [ref=e49]:
+          - generic [ref=e50]: "0"
+          - generic [ref=e51]: "1"
+        - generic [ref=e52]: Issue
+      - button "Collapse issues badge" [ref=e53]:
+        - img [ref=e54]
+  - alert [ref=e45]

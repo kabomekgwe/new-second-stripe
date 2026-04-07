@@ -6,6 +6,7 @@ import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { loginSchema, type LoginFormData } from '@/lib/validations/schemas';
 import { useLoginMutation } from '@/lib/store/auth-api';
+import { getReadableErrorMessage } from '@/lib/error-utils';
 
 export default function LoginForm() {
   const router = useRouter();
@@ -20,12 +21,16 @@ export default function LoginForm() {
   });
 
   const errorMessage = apiError
-    ? ((apiError as any).data?.message || 'Login failed')
+    ? getReadableErrorMessage(apiError, 'Login failed')
     : null;
 
   async function onSubmit(data: LoginFormData) {
-    await login(data).unwrap();
-    router.push('/');
+    try {
+      await login(data).unwrap();
+      router.push('/');
+    } catch {
+      // The mutation error is surfaced through `apiError`; avoid rethrowing into the runtime overlay.
+    }
   }
 
   return (

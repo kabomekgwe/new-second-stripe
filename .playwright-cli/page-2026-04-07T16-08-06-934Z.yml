@@ -1,0 +1,48 @@
+- generic [ref=e1]:
+  - generic [ref=e27]:
+    - heading "Create an account" [level=1] [ref=e28]
+    - generic [ref=e29]:
+      - generic [ref=e30]:
+        - generic [ref=e31]: Full name
+        - textbox "Full name" [ref=e32]:
+          - /placeholder: John Doe
+          - text: Codex User
+      - generic [ref=e33]:
+        - generic [ref=e34]: Email
+        - textbox "Email" [ref=e35]:
+          - /placeholder: you@example.com
+        - paragraph [ref=e46]: Invalid email address
+      - generic [ref=e36]:
+        - generic [ref=e37]: Password
+        - textbox "Password" [ref=e38]:
+          - /placeholder: ••••••••
+          - text: codex1775578029@example.comPassword123!
+      - generic [ref=e39]:
+        - generic [ref=e40]: Country
+        - combobox "Country" [active] [ref=e41]:
+          - option "Select a country" [disabled] [selected]
+          - option "United Kingdom"
+          - option "United States"
+          - option "Canada"
+          - option "Australia"
+          - option "Germany"
+          - option "France"
+          - option "Spain"
+          - option "Italy"
+          - option "Netherlands"
+          - option "Sweden"
+          - option "Norway"
+          - option "Denmark"
+          - option "Ireland"
+          - option "New Zealand"
+          - option "Japan"
+          - option "Singapore"
+        - paragraph [ref=e47]: Please select a country
+      - button "Create account" [ref=e42]
+    - paragraph [ref=e43]:
+      - text: Already have an account?
+      - link "Sign in" [ref=e44] [cursor=pointer]:
+        - /url: /auth/login
+  - button "Open Next.js Dev Tools" [ref=e21] [cursor=pointer]:
+    - img [ref=e22]
+  - alert [ref=e45]

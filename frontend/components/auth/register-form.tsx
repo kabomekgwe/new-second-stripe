@@ -6,6 +6,7 @@ import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { registerSchema, type RegisterFormData } from '@/lib/validations/schemas';
 import { useRegisterMutation } from '@/lib/store/auth-api';
+import { getReadableErrorMessage } from '@/lib/error-utils';
 
 const COUNTRIES = [
   { code: 'GB', name: 'United Kingdom' },
@@ -39,12 +40,16 @@ export default function RegisterForm() {
   });
 
   const errorMessage = apiError
-    ? ((apiError as any).data?.message || 'Registration failed')
+    ? getReadableErrorMessage(apiError, 'Registration failed')
     : null;
 
   async function onSubmit(data: RegisterFormData) {
-    await registerUser(data).unwrap();
-    router.push('/');
+    try {
+      await registerUser(data).unwrap();
+      router.push('/');
+    } catch {
+      // The mutation error is surfaced through `apiError`; avoid rethrowing into the runtime overlay.
+    }
   }
 
   return (

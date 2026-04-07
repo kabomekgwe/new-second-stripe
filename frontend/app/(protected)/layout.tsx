@@ -45,6 +45,8 @@ export default function ProtectedLayout({ children }: { children: React.ReactNod
   async function handleLogout() {
     try {
       await logout().unwrap();
+    } catch {
+      // Redirect to login even if the session is already invalid.
     } finally {
       router.push('/auth/login');
     }

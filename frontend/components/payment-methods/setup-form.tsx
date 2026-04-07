@@ -5,6 +5,7 @@ import { PaymentElement, useStripe, useElements } from '@stripe/react-stripe-js'
 import { useSyncPaymentMethodMutation } from '@/lib/store/payment-methods-api';
 import Link from 'next/link';
 import type { StripePaymentElementOptions } from '@stripe/stripe-js';
+import { getReadableErrorMessage } from '@/lib/error-utils';
 
 interface SetupFormProps {
   userEmail: string;
@@ -59,7 +60,7 @@ export function SetupForm({ userEmail, userName, userCountry }: SetupFormProps) 
         }
       }
 
-      setError(error.message || 'Setup failed. Please try again.');
+      setError(getReadableErrorMessage(error, 'Setup failed. Please try again.'));
       setSubmitting(false);
       return;
     }

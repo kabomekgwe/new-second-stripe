@@ -4,6 +4,7 @@ import type { FxQuoteResponse, PaymentMethodResponse } from '@stripe-app/shared'
 import { useCreatePaymentIntentMutation } from '@/lib/store/payments-api';
 import { PaymentMethodIcon } from '@/components/payment-methods/payment-method-icon';
 import { stripePromise } from '@/lib/stripe';
+import { getReadableErrorMessage } from '@/lib/error-utils';
 import { formatPence, formatCurrency, getMethodLabel } from './payment-utils';
 
 export function StepConfirmPay({
@@ -98,11 +99,7 @@ export function StepConfirmPay({
           onError('Stripe returned an unexpected payment state.');
       }
     } catch (err: unknown) {
-      const message =
-        err && typeof err === 'object' && 'data' in err
-          ? String((err as { data: { message?: string } }).data?.message || 'Payment failed')
-          : 'Something went wrong. Please try again.';
-      onError(message);
+      onError(getReadableErrorMessage(err, 'Payment failed'));
     }
   };
 
