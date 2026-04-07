@@ -3,6 +3,7 @@ import {
   ChargeStatus,
   PaymentStatus,
 } from './stripe.types';
+import type { PaymentMethodAvailabilityCategory } from '../constants/payment-method-availability';
 
 // Auth
 export interface RegisterRequest {
@@ -54,6 +55,7 @@ export interface PaymentMethodResponse {
 export interface AvailablePaymentMethodType {
   type: string;
   label: string;
+  category: PaymentMethodAvailabilityCategory;
 }
 
 export interface SetupIntentResponse {

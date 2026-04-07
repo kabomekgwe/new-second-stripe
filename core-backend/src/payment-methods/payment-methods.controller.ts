@@ -37,8 +37,10 @@ export class PaymentMethodsController {
   }
 
   @Get('available')
-  getAvailablePaymentMethodTypes() {
-    return this.paymentMethodsService.getAvailablePaymentMethodTypes();
+  getAvailablePaymentMethodTypes(@Req() req: Request) {
+    return this.paymentMethodsService.getAvailablePaymentMethodTypes(
+      (req.user as User).id,
+    );
   }
 
   @Post('setup-intent')

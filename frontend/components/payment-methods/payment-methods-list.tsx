@@ -8,12 +8,14 @@ import {
   useSetDefaultMethodMutation,
   useDeleteMethodMutation,
 } from '@/lib/store/payment-methods-api';
+import { useGetMeQuery } from '@/lib/store/auth-api';
 import { PaymentMethodCard } from './payment-method-card';
 import { AvailableTypesGrid } from './available-types-grid';
 
 export function PaymentMethodsList() {
   const { data: savedMethods, isLoading: methodsLoading, isError: methodsError } = useGetPaymentMethodsQuery();
   const { data: availableTypes, isLoading: typesLoading } = useGetAvailableMethodTypesQuery();
+  const { data: user } = useGetMeQuery();
   const [setDefaultMethod] = useSetDefaultMethodMutation();
   const [deleteMethod] = useDeleteMethodMutation();
   const [error, setError] = useState('');
@@ -79,7 +81,10 @@ export function PaymentMethodsList() {
       </section>
 
       {/* Available Payment Method Types */}
-      <AvailableTypesGrid types={availableTypes || []} />
+      <AvailableTypesGrid
+        types={availableTypes || []}
+        countryCode={user?.country ?? null}
+      />
     </div>
   );
 }

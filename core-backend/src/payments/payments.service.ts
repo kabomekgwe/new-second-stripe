@@ -13,6 +13,7 @@ import {
   CreateCheckoutSessionResponse,
   PaymentMethod,
   SUPPORTED_SAVED_PAYMENT_METHOD_TYPES,
+  isPaymentMethodTypeAvailableForCountry,
 } from '@stripe-app/shared';
 import { StripeService } from '../stripe/stripe.service';
 import { generateUniqueIdempotencyKey } from '../common/utils/idempotency';
@@ -38,7 +39,7 @@ export class PaymentsService {
   ) {
     this.frontendUrl = this.configService.get<string>(
       'FRONTEND_URL',
-      'http://localhost:3847',
+      'http://localhost:300',
     );
   }
 
@@ -99,6 +100,12 @@ export class PaymentsService {
     if (!user.stripeCustomerId) {
       throw new BadRequestException(
         'User does not have a Stripe customer account',
+      );
+    }
+
+    if (!isPaymentMethodTypeAvailableForCountry(paymentMethod.type, user.country)) {
+      throw new BadRequestException(
+        `Payment method type ${paymentMethod.type} is not available in ${user.country}`,
       );
     }
 
@@ -255,7 +262,6 @@ export class PaymentsService {
         `Payment method type ${paymentMethod.type} is not supported for this flow`,
       );
     }
-
     return paymentMethod;
   }
 }

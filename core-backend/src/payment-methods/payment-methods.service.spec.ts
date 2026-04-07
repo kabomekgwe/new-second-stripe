@@ -98,20 +98,106 @@ describe('PaymentMethodsService', () => {
   });
 
   describe('getAvailablePaymentMethodTypes', () => {
-    it('returns only supported saved payment method types', async () => {
-      stripeService.getPaymentMethodConfigurations.mockResolvedValue({
-        data: [
-          {
-            card: { available: true },
-            sepa_debit: { available: true },
-            ideal: { available: true },
-          },
-        ],
+    it('returns card and UK-specific methods for a GB user', async () => {
+      usersSql.findById.mockResolvedValue({
+        id: 'user_uk',
+        country: 'GB',
       });
 
-      const result = await service.getAvailablePaymentMethodTypes();
+      const result = await service.getAvailablePaymentMethodTypes('user_uk');
 
-      expect(result).toEqual([{ type: 'card', label: 'Card' }]);
+      expect(result).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            type: 'card',
+            label: 'Visa / Mastercard - Premium',
+            category: 'Card',
+          }),
+          expect.objectContaining({
+            type: 'pay_by_bank',
+            label: 'Pay By Bank',
+            category: 'Bank Redirect',
+          }),
+          expect.objectContaining({
+            type: 'bacs_debit',
+            label: 'Bacs Direct Debit',
+            category: 'Bank debit',
+          }),
+        ]),
+      );
+      expect(result).not.toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({ label: 'ACH Direct Debit' }),
+          expect.objectContaining({ label: 'Bancontact' }),
+        ]),
+      );
+    });
+
+    it('returns country-specific methods for a US user and excludes UK/Europe-only methods', async () => {
+      usersSql.findById.mockResolvedValue({
+        id: 'user_us',
+        country: 'US',
+      });
+
+      const result = await service.getAvailablePaymentMethodTypes('user_us');
+
+      expect(result).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            label: 'AMEX - International',
+            category: 'Card',
+          }),
+          expect.objectContaining({
+            label: 'Visa / Mastercard - International',
+            category: 'Card',
+          }),
+          expect.objectContaining({
+            type: 'us_bank_account',
+            label: 'ACH Direct Debit',
+            category: 'Bank debit',
+          }),
+        ]),
+      );
+      expect(result).not.toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({ label: 'Pay By Bank' }),
+          expect.objectContaining({ label: 'SEPA Direct Debit' }),
+          expect.objectContaining({ label: 'Bacs Direct Debit' }),
+        ]),
+      );
+    });
+
+    it('returns Europe-only redirect methods for the matching countries', async () => {
+      usersSql.findById.mockResolvedValue({
+        id: 'user_nl',
+        country: 'NL',
+      });
+
+      const result = await service.getAvailablePaymentMethodTypes('user_nl');
+
+      expect(result).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({ label: 'iDEAL', type: 'ideal' }),
+          expect.objectContaining({
+            label: 'AMEX - Domestic / EEA',
+            category: 'Card',
+          }),
+          expect.objectContaining({
+            label: 'Visa / Mastercard - EEA',
+            category: 'Card',
+          }),
+          expect.objectContaining({
+            label: 'SEPA Direct Debit',
+            type: 'sepa_debit',
+          }),
+        ]),
+      );
+      expect(result).not.toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({ label: 'Pay By Bank' }),
+          expect.objectContaining({ label: 'ACH Direct Debit' }),
+        ]),
+      );
     });
   });
 
@@ -120,6 +206,7 @@ describe('PaymentMethodsService', () => {
       usersSql.findById.mockResolvedValue({
         id: 'user_1',
         stripeCustomerId: 'cus_123',
+        country: 'GB',
         defaultPaymentMethodId: null,
       });
       stripeService.retrievePaymentMethod.mockResolvedValue({
@@ -157,6 +244,7 @@ describe('PaymentMethodsService', () => {
       usersSql.findById.mockResolvedValue({
         id: 'user_1',
         stripeCustomerId: 'cus_123',
+        country: 'GB',
         defaultPaymentMethodId: 'pm_existing',
       });
       stripeService.retrievePaymentMethod.mockResolvedValue({
@@ -192,6 +280,7 @@ describe('PaymentMethodsService', () => {
       usersSql.findById.mockResolvedValue({
         id: 'user_1',
         stripeCustomerId: 'cus_123',
+        country: 'GB',
         defaultPaymentMethodId: null,
       });
       stripeService.retrievePaymentMethod.mockResolvedValue({
@@ -214,6 +303,7 @@ describe('PaymentMethodsService', () => {
       usersSql.findById.mockResolvedValue({
         id: 'user_1',
         stripeCustomerId: 'cus_123',
+        country: 'GB',
         defaultPaymentMethodId: 'pm_stripe_1',
       });
       paymentMethodsSql.upsertFromStripeTX.mockResolvedValue({
@@ -242,6 +332,7 @@ describe('PaymentMethodsService', () => {
       usersSql.updateStripeCustomerAndReturn.mockResolvedValue({
         id: 'user_1',
         stripeCustomerId: 'cus_new',
+        country: 'GB',
         defaultPaymentMethodId: null,
       });
       stripeService.retrievePaymentMethod.mockResolvedValue({
@@ -303,6 +394,28 @@ describe('PaymentMethodsService', () => {
 
       await expect(
         service.syncAndSavePaymentMethod('user_1', 'pm_unattached'),
+      ).rejects.toThrow(BadRequestException);
+
+      expect(paymentMethodsSql.upsertFromStripeTX).not.toHaveBeenCalled();
+    });
+
+    it('rejects payment methods that are not available in the user region', async () => {
+      usersSql.findById.mockResolvedValue({
+        id: 'user_1',
+        stripeCustomerId: 'cus_123',
+        country: 'GB',
+        defaultPaymentMethodId: null,
+      });
+      stripeService.retrievePaymentMethod.mockResolvedValue({
+        id: 'pm_us_bank_1',
+        customer: 'cus_123',
+        type: 'us_bank_account',
+        card: null,
+        metadata: {},
+      });
+
+      await expect(
+        service.syncAndSavePaymentMethod('user_1', 'pm_us_bank_1'),
       ).rejects.toThrow(BadRequestException);
 
       expect(paymentMethodsSql.upsertFromStripeTX).not.toHaveBeenCalled();

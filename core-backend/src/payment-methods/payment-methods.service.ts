@@ -7,8 +7,8 @@ import Stripe from 'stripe';
 import {
   PaymentMethod,
   User,
-  PAYMENT_METHOD_LABELS,
-  SUPPORTED_SAVED_PAYMENT_METHOD_TYPES,
+  getAvailablePaymentMethodDefinitionsForCountry,
+  isPaymentMethodTypeAvailableForCountry,
 } from '@stripe-app/shared';
 import { StripeService } from '../stripe/stripe.service';
 import { generateUniqueIdempotencyKey } from '../common/utils/idempotency';
@@ -25,10 +25,6 @@ export class PaymentMethodsService {
     'requires_payment_method',
     'processing',
   ]);
-  private static readonly SUPPORTED_PAYMENT_METHOD_TYPE_SET = new Set(
-    SUPPORTED_SAVED_PAYMENT_METHOD_TYPES,
-  );
-
   constructor(
     private readonly paymentMethodsSql: PaymentMethodsSqlService,
     private readonly usersSql: UsersSqlService,
@@ -39,30 +35,18 @@ export class PaymentMethodsService {
     return this.paymentMethodsSql.findByUserId(userId);
   }
 
-  async getAvailablePaymentMethodTypes(): Promise<
-    { type: string; label: string }[]
-  > {
-    const configs = await this.stripeService.getPaymentMethodConfigurations();
-    const enabledTypes: { type: string; label: string }[] = [];
+  async getAvailablePaymentMethodTypes(
+    userId: string,
+  ): Promise<{ type: string; label: string; category: string }[]> {
+    const user = await this.findUserOrFail(userId);
 
-    for (const config of configs.data) {
-      for (const type of SUPPORTED_SAVED_PAYMENT_METHOD_TYPES) {
-        const settings = (config as unknown as Record<string, unknown>)[type];
-        if (
-          settings &&
-          typeof settings === 'object' &&
-          'available' in settings &&
-          (settings as { available?: boolean }).available === true
-        ) {
-          const label = PAYMENT_METHOD_LABELS[type] ?? type;
-          if (!enabledTypes.some((entry) => entry.type === type)) {
-            enabledTypes.push({ type, label });
-          }
-        }
-      }
-    }
-
-    return enabledTypes;
+    return getAvailablePaymentMethodDefinitionsForCountry(user.country).map(
+      (entry) => ({
+        type: entry.type,
+        label: entry.label,
+        category: entry.category,
+      }),
+    );
   }
 
   async createSetupIntent(
@@ -191,13 +175,9 @@ export class PaymentMethodsService {
       );
     }
 
-    if (
-      !PaymentMethodsService.SUPPORTED_PAYMENT_METHOD_TYPE_SET.has(
-        stripePm.type as (typeof SUPPORTED_SAVED_PAYMENT_METHOD_TYPES)[number],
-      )
-    ) {
+    if (!isPaymentMethodTypeAvailableForCountry(stripePm.type, user.country)) {
       throw new BadRequestException(
-        `Unsupported payment method type: ${stripePm.type}`,
+        `Payment method type ${stripePm.type} is not available in ${user.country}`,
       );
     }
 
