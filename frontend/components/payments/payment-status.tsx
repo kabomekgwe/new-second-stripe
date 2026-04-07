@@ -1,7 +1,7 @@
 import Link from 'next/link';
 
 interface PaymentStatusProps {
-  type: 'success' | 'error';
+  type: 'success' | 'error' | 'pending';
   message?: string;
   onRetry?: () => void;
 }
@@ -17,6 +17,28 @@ export function PaymentStatus({ type, message, onRetry }: PaymentStatusProps) {
         </div>
         <h2 className="mt-4 text-xl font-semibold text-gray-900">Payment Successful!</h2>
         <p className="mt-2 text-sm text-gray-500">Your payment has been processed successfully.</p>
+        <Link
+          href="/payments"
+          className="mt-6 inline-block rounded-md bg-blue-600 px-6 py-2.5 text-sm font-medium text-white hover:bg-blue-700 transition-colors"
+        >
+          View Payment History
+        </Link>
+      </div>
+    );
+  }
+
+  if (type === 'pending') {
+    return (
+      <div className="mx-auto max-w-lg rounded-xl border border-gray-200 bg-white p-8 text-center shadow-sm">
+        <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-full bg-amber-100">
+          <svg className="h-8 w-8 text-amber-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+          </svg>
+        </div>
+        <h2 className="mt-4 text-xl font-semibold text-gray-900">Payment Processing</h2>
+        <p className="mt-2 text-sm text-gray-500">
+          {message || 'Stripe has accepted the payment and is still finalizing it.'}
+        </p>
         <Link
           href="/payments"
           className="mt-6 inline-block rounded-md bg-blue-600 px-6 py-2.5 text-sm font-medium text-white hover:bg-blue-700 transition-colors"

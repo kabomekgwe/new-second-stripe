@@ -46,7 +46,7 @@ export class StripeService {
       {
         customer: customerId,
         usage: 'off_session',
-        automatic_payment_methods: { enabled: true },
+        payment_method_types: ['card'],
       },
       { idempotencyKey },
     );

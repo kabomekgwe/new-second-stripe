@@ -3,6 +3,7 @@
 import type { FxQuoteResponse, PaymentMethodResponse } from '@stripe-app/shared';
 import { useCreatePaymentIntentMutation } from '@/lib/store/payments-api';
 import { PaymentMethodIcon } from '@/components/payment-methods/payment-method-icon';
+import { stripePromise } from '@/lib/stripe';
 import { formatPence, formatCurrency, getMethodLabel } from './payment-utils';
 
 export function StepConfirmPay({
@@ -12,6 +13,7 @@ export function StepConfirmPay({
   fxQuoteId,
   onBack,
   onSuccess,
+  onPending,
   onError,
 }: {
   amountGbp: number;
@@ -20,6 +22,7 @@ export function StepConfirmPay({
   fxQuoteId: string | undefined;
   onBack: () => void;
   onSuccess: () => void;
+  onPending: (msg: string) => void;
   onError: (msg: string) => void;
 }) {
   const [createPaymentIntent, { isLoading }] = useCreatePaymentIntentMutation();
@@ -28,12 +31,72 @@ export function StepConfirmPay({
     if (!selectedMethod) return;
 
     try {
-      await createPaymentIntent({
+      const result = await createPaymentIntent({
         amountGbp,
         paymentMethodId: selectedMethod.stripePaymentMethodId,
         ...(fxQuoteId ? { fxQuoteId } : {}),
       }).unwrap();
-      onSuccess();
+
+      if (result.status === 'succeeded') {
+        onSuccess();
+        return;
+      }
+
+      if (!result.clientSecret) {
+        onError('Stripe did not return a client secret for confirmation.');
+        return;
+      }
+
+      const stripe = await stripePromise;
+      if (!stripe) {
+        onError('Stripe.js failed to load. Please refresh and try again.');
+        return;
+      }
+
+      const confirmation = await stripe.confirmCardPayment(
+        result.clientSecret,
+        {
+          payment_method: selectedMethod.stripePaymentMethodId,
+        },
+      );
+
+      if (confirmation.error) {
+        onError(confirmation.error.message || 'Payment failed');
+        return;
+      }
+
+      const paymentIntent = confirmation.paymentIntent;
+      if (!paymentIntent) {
+        onError('Stripe did not return a payment result. Please try again.');
+        return;
+      }
+
+      switch (paymentIntent.status) {
+        case 'succeeded':
+          onSuccess();
+          return;
+        case 'processing':
+          onPending(
+            'Stripe is still processing this payment. Check payment history for the final result.',
+          );
+          return;
+        case 'requires_payment_method':
+          onError(
+            'Stripe could not use the selected card. Please choose another saved card.',
+          );
+          return;
+        case 'requires_action':
+        case 'requires_confirmation':
+          onError(
+            'This payment still needs additional authentication. Please try again.',
+          );
+          return;
+        case 'canceled':
+          onError('This payment was canceled before it could be completed.');
+          return;
+        default:
+          onError('Stripe returned an unexpected payment state.');
+      }
     } catch (err: unknown) {
       const message =
         err && typeof err === 'object' && 'data' in err

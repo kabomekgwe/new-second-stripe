@@ -81,9 +81,20 @@ export interface CreatePaymentRequest {
   fxQuoteId?: string;
 }
 
+export type PaymentIntentClientStatus =
+  | 'requires_payment_method'
+  | 'requires_confirmation'
+  | 'requires_action'
+  | 'requires_capture'
+  | 'processing'
+  | 'succeeded'
+  | 'canceled';
+
 export interface CreatePaymentResponse {
   clientSecret: string;
   paymentIntentId: string;
+  status: PaymentIntentClientStatus;
+  requiresAction: boolean;
 }
 
 // Checkout Sessions (Adaptive Pricing)

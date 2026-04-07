@@ -13,15 +13,29 @@ describe('PaymentIntentHandler', () => {
     jest.clearAllMocks();
   });
 
-  function buildSucceededEvent(): Stripe.Event {
+  function buildPaymentIntent(
+    overrides: Partial<Stripe.PaymentIntent> = {},
+  ): Stripe.PaymentIntent {
     return {
-      id: 'evt_management_fee',
-      type: 'payment_intent.succeeded',
+      id: 'pi_user_payment',
+      metadata: {
+        type: 'user_payment',
+        userId: 'user_1',
+        idempotencyKey: 'payment:user_1:1250:pm_card_1',
+      },
+      ...overrides,
+    } as Stripe.PaymentIntent;
+  }
+
+  function buildEvent(
+    type: Stripe.Event.Type,
+    paymentIntent: Stripe.PaymentIntent,
+  ): Stripe.Event {
+    return {
+      id: 'evt_payment_intent',
+      type,
       data: {
-        object: {
-          id: 'pi_management_fee',
-          metadata: { type: 'management_fee' },
-        } as unknown as Stripe.PaymentIntent,
+        object: paymentIntent,
       },
     } as Stripe.Event;
   }
@@ -32,7 +46,15 @@ describe('PaymentIntentHandler', () => {
     database.query.mockResolvedValueOnce({ rows: [{ id: 'payment_1' }] });
     database.query.mockResolvedValueOnce({ rows: [] });
 
-    await handler.handleSucceeded(buildSucceededEvent());
+    await handler.handleSucceeded(
+      buildEvent(
+        'payment_intent.succeeded',
+        buildPaymentIntent({
+          id: 'pi_management_fee',
+          metadata: { type: 'management_fee' },
+        }),
+      ),
+    );
 
     expect(database.query).toHaveBeenNthCalledWith(
       1,
@@ -51,8 +73,47 @@ describe('PaymentIntentHandler', () => {
     );
     expect(database.query).toHaveBeenNthCalledWith(
       4,
-      'UPDATE payments SET status = $2, "updatedAt" = now() WHERE id = $1',
-      ['payment_1', PaymentStatus.SUCCEEDED],
+      expect.stringContaining('UPDATE payments'),
+      ['payment_1', PaymentStatus.SUCCEEDED, 'pi_management_fee'],
+    );
+  });
+
+  it('falls back to metadata reconciliation when the direct payment intent lookup misses', async () => {
+    database.query.mockResolvedValueOnce({ rows: [] });
+    database.query.mockResolvedValueOnce({ rows: [{ id: 'payment_2' }] });
+    database.query.mockResolvedValueOnce({ rows: [] });
+
+    await handler.handleSucceeded(
+      buildEvent('payment_intent.succeeded', buildPaymentIntent()),
+    );
+
+    expect(database.query).toHaveBeenNthCalledWith(
+      1,
+      'SELECT id FROM payments WHERE "stripePaymentIntentId" = $1 LIMIT 1',
+      ['pi_user_payment'],
+    );
+    expect(database.query).toHaveBeenNthCalledWith(
+      2,
+      expect.stringContaining('FROM payments'),
+      ['user_1', 'payment:user_1:1250:pm_card_1', PaymentStatus.PENDING],
+    );
+    expect(database.query).toHaveBeenNthCalledWith(
+      3,
+      expect.stringContaining('UPDATE payments'),
+      ['payment_2', PaymentStatus.SUCCEEDED, 'pi_user_payment'],
+    );
+  });
+
+  it('throws for unresolved user payment intents so Stripe retries the webhook', async () => {
+    database.query.mockResolvedValueOnce({ rows: [] });
+    database.query.mockResolvedValueOnce({ rows: [] });
+
+    await expect(
+      handler.handleSucceeded(
+        buildEvent('payment_intent.succeeded', buildPaymentIntent()),
+      ),
+    ).rejects.toThrow(
+      'Unable to reconcile PaymentIntent pi_user_payment to a local payment',
     );
   });
 });

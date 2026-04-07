@@ -9,6 +9,7 @@ import { PostgresService } from '../../database/postgres.service';
 @Injectable()
 export class PaymentIntentHandler {
   private readonly logger = new Logger(PaymentIntentHandler.name);
+  private static readonly USER_PAYMENT_TYPE = 'user_payment';
 
   constructor(
     private readonly database: PostgresService,
@@ -34,14 +35,19 @@ export class PaymentIntentHandler {
     await this.updatePayment(paymentIntent, PaymentStatus.FAILED);
   }
 
-  private async updatePayment(paymentIntent: Stripe.PaymentIntent, status: PaymentStatus): Promise<void> {
-    const paymentResult = await this.database.query<{ id: string }>(
-      'SELECT id FROM payments WHERE "stripePaymentIntentId" = $1 LIMIT 1',
-      [paymentIntent.id],
-    );
-    const payment = paymentResult.rows[0];
+  private async updatePayment(
+    paymentIntent: Stripe.PaymentIntent,
+    status: PaymentStatus,
+  ): Promise<void> {
+    const payment = await this.resolvePayment(paymentIntent);
 
     if (!payment) {
+      if (paymentIntent.metadata?.type === PaymentIntentHandler.USER_PAYMENT_TYPE) {
+        throw new Error(
+          `Unable to reconcile PaymentIntent ${paymentIntent.id} to a local payment`,
+        );
+      }
+
       this.logger.debug(
         `No payment record found for PaymentIntent ${paymentIntent.id}`,
       );
@@ -49,12 +55,50 @@ export class PaymentIntentHandler {
     }
 
     await this.database.query(
-      'UPDATE payments SET status = $2, "updatedAt" = now() WHERE id = $1',
-      [payment.id, status],
+      `UPDATE payments
+       SET
+         status = $2,
+         "stripePaymentIntentId" = COALESCE("stripePaymentIntentId", $3),
+         "updatedAt" = now()
+       WHERE id = $1`,
+      [payment.id, status, paymentIntent.id],
     );
     this.logger.log(
       `Updated payment ${payment.id} to status ${status}`,
     );
+  }
+
+  private async resolvePayment(
+    paymentIntent: Stripe.PaymentIntent,
+  ): Promise<{ id: string } | null> {
+    const paymentResult = await this.database.query<{ id: string }>(
+      'SELECT id FROM payments WHERE "stripePaymentIntentId" = $1 LIMIT 1',
+      [paymentIntent.id],
+    );
+    const payment = paymentResult.rows[0];
+
+    if (payment) {
+      return payment;
+    }
+
+    const metadataUserId = paymentIntent.metadata?.userId;
+    const metadataIdempotencyKey = paymentIntent.metadata?.idempotencyKey;
+    if (!metadataUserId || !metadataIdempotencyKey) {
+      return null;
+    }
+
+    const fallbackResult = await this.database.query<{ id: string }>(
+      `SELECT id
+       FROM payments
+       WHERE "userId" = $1
+         AND "idempotencyKey" = $2
+         AND status = $3
+       ORDER BY "createdAt" DESC
+       LIMIT 1`,
+      [metadataUserId, metadataIdempotencyKey, PaymentStatus.PENDING],
+    );
+
+    return fallbackResult.rows[0] ?? null;
   }
 
   private async updateUsageCharge(

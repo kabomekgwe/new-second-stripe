@@ -97,6 +97,24 @@ describe('PaymentMethodsService', () => {
     });
   });
 
+  describe('getAvailablePaymentMethodTypes', () => {
+    it('returns only supported saved payment method types', async () => {
+      stripeService.getPaymentMethodConfigurations.mockResolvedValue({
+        data: [
+          {
+            card: { available: true },
+            sepa_debit: { available: true },
+            ideal: { available: true },
+          },
+        ],
+      });
+
+      const result = await service.getAvailablePaymentMethodTypes();
+
+      expect(result).toEqual([{ type: 'card', label: 'Card' }]);
+    });
+  });
+
   describe('syncAndSavePaymentMethod', () => {
     it('sets as default when user has no default payment method', async () => {
       usersSql.findById.mockResolvedValue({
@@ -106,6 +124,7 @@ describe('PaymentMethodsService', () => {
       });
       stripeService.retrievePaymentMethod.mockResolvedValue({
         id: 'pm_stripe_1',
+        customer: 'cus_123',
         type: 'card',
         card: { last4: '4242', brand: 'visa', exp_month: 12, exp_year: 2025 },
         metadata: {},
@@ -142,6 +161,7 @@ describe('PaymentMethodsService', () => {
       });
       stripeService.retrievePaymentMethod.mockResolvedValue({
         id: 'pm_stripe_2',
+        customer: 'cus_123',
         type: 'card',
         card: { last4: '1234', brand: 'mastercard', exp_month: 6, exp_year: 2026 },
         metadata: {},
@@ -176,6 +196,7 @@ describe('PaymentMethodsService', () => {
       });
       stripeService.retrievePaymentMethod.mockResolvedValue({
         id: 'pm_stripe_1',
+        customer: 'cus_123',
         type: 'card',
         card: { last4: '4242', brand: 'visa', exp_month: 12, exp_year: 2025 },
         metadata: {},
@@ -225,6 +246,7 @@ describe('PaymentMethodsService', () => {
       });
       stripeService.retrievePaymentMethod.mockResolvedValue({
         id: 'pm_stripe_1',
+        customer: 'cus_new',
         type: 'card',
         card: { last4: '4242', brand: 'visa', exp_month: 12, exp_year: 2025 },
         metadata: {},
@@ -242,6 +264,48 @@ describe('PaymentMethodsService', () => {
 
       expect(stripeService.createCustomer).toHaveBeenCalled();
       expect(result.stripePaymentMethodId).toBe('pm_stripe_1');
+    });
+
+    it('rejects payment methods attached to another Stripe customer', async () => {
+      usersSql.findById.mockResolvedValue({
+        id: 'user_1',
+        stripeCustomerId: 'cus_123',
+        defaultPaymentMethodId: null,
+      });
+      stripeService.retrievePaymentMethod.mockResolvedValue({
+        id: 'pm_foreign',
+        customer: 'cus_other',
+        type: 'card',
+        card: { last4: '4242', brand: 'visa', exp_month: 12, exp_year: 2025 },
+        metadata: {},
+      });
+
+      await expect(
+        service.syncAndSavePaymentMethod('user_1', 'pm_foreign'),
+      ).rejects.toThrow(BadRequestException);
+
+      expect(paymentMethodsSql.upsertFromStripeTX).not.toHaveBeenCalled();
+    });
+
+    it('rejects unattached payment methods', async () => {
+      usersSql.findById.mockResolvedValue({
+        id: 'user_1',
+        stripeCustomerId: 'cus_123',
+        defaultPaymentMethodId: null,
+      });
+      stripeService.retrievePaymentMethod.mockResolvedValue({
+        id: 'pm_unattached',
+        customer: null,
+        type: 'card',
+        card: { last4: '4242', brand: 'visa', exp_month: 12, exp_year: 2025 },
+        metadata: {},
+      });
+
+      await expect(
+        service.syncAndSavePaymentMethod('user_1', 'pm_unattached'),
+      ).rejects.toThrow(BadRequestException);
+
+      expect(paymentMethodsSql.upsertFromStripeTX).not.toHaveBeenCalled();
     });
   });
 

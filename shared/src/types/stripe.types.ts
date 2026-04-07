@@ -44,6 +44,13 @@ export enum PaymentMethodType {
   LINK = 'link',
 }
 
+export const SUPPORTED_SAVED_PAYMENT_METHOD_TYPES = [
+  PaymentMethodType.CARD,
+] as const;
+
+export type SupportedSavedPaymentMethodType =
+  (typeof SUPPORTED_SAVED_PAYMENT_METHOD_TYPES)[number];
+
 export const PAYMENT_METHOD_LABELS: Record<string, string> = {
   card: 'Card',
   bacs_debit: 'Bacs Direct Debit',

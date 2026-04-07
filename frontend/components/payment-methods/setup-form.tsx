@@ -142,11 +142,6 @@ export function SetupForm({ userEmail, userName, userCountry }: SetupFormProps) 
         address: 'auto',
       },
     },
-    paymentMethodOrder: ['card', 'apple_pay'],
-    wallets: {
-      applePay: 'auto',
-      googlePay: 'auto',
-    },
     terms: {
       card: 'never',
     },

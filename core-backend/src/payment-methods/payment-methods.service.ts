@@ -4,7 +4,12 @@ import {
   BadRequestException,
 } from '@nestjs/common';
 import Stripe from 'stripe';
-import { PaymentMethod, User, PAYMENT_METHOD_LABELS } from '@stripe-app/shared';
+import {
+  PaymentMethod,
+  User,
+  PAYMENT_METHOD_LABELS,
+  SUPPORTED_SAVED_PAYMENT_METHOD_TYPES,
+} from '@stripe-app/shared';
 import { StripeService } from '../stripe/stripe.service';
 import { generateUniqueIdempotencyKey } from '../common/utils/idempotency';
 import { UsersSqlService } from '../users/users.sql.service';
@@ -20,6 +25,9 @@ export class PaymentMethodsService {
     'requires_payment_method',
     'processing',
   ]);
+  private static readonly SUPPORTED_PAYMENT_METHOD_TYPE_SET = new Set(
+    SUPPORTED_SAVED_PAYMENT_METHOD_TYPES,
+  );
 
   constructor(
     private readonly paymentMethodsSql: PaymentMethodsSqlService,
@@ -37,65 +45,8 @@ export class PaymentMethodsService {
     const configs = await this.stripeService.getPaymentMethodConfigurations();
     const enabledTypes: { type: string; label: string }[] = [];
 
-    const paymentMethodTypes = [
-      'acss_debit',
-      'affirm',
-      'afterpay_clearpay',
-      'alipay',
-      'alma',
-      'amazon_pay',
-      'apple_pay',
-      'au_becs_debit',
-      'bacs_debit',
-      'bancontact',
-      'billie',
-      'blik',
-      'boleto',
-      'card',
-      'cartes_bancaires',
-      'cashapp',
-      'crypto',
-      'customer_balance',
-      'eps',
-      'fpx',
-      'giropay',
-      'google_pay',
-      'grabpay',
-      'ideal',
-      'jcb',
-      'kakao_pay',
-      'klarna',
-      'konbini',
-      'kr_card',
-      'link',
-      'mb_way',
-      'mobilepay',
-      'multibanco',
-      'naver_pay',
-      'nz_bank_account',
-      'oxxo',
-      'p24',
-      'pay_by_bank',
-      'payco',
-      'paynow',
-      'paypal',
-      'payto',
-      'pix',
-      'promptpay',
-      'revolut_pay',
-      'samsung_pay',
-      'satispay',
-      'sepa_debit',
-      'sofort',
-      'swish',
-      'twint',
-      'us_bank_account',
-      'wechat_pay',
-      'zip',
-    ];
-
     for (const config of configs.data) {
-      for (const type of paymentMethodTypes) {
+      for (const type of SUPPORTED_SAVED_PAYMENT_METHOD_TYPES) {
         const settings = (config as unknown as Record<string, unknown>)[type];
         if (
           settings &&
@@ -223,6 +174,32 @@ export class PaymentMethodsService {
     const stripePm = await this.stripeService.retrievePaymentMethod(
       stripePaymentMethodId,
     );
+    const stripeCustomerId =
+      typeof stripePm.customer === 'string'
+        ? stripePm.customer
+        : stripePm.customer?.id ?? null;
+
+    if (!stripeCustomerId) {
+      throw new BadRequestException(
+        'Payment method must be attached to your Stripe customer before it can be saved',
+      );
+    }
+
+    if (stripeCustomerId !== user.stripeCustomerId) {
+      throw new BadRequestException(
+        'Payment method does not belong to the authenticated user',
+      );
+    }
+
+    if (
+      !PaymentMethodsService.SUPPORTED_PAYMENT_METHOD_TYPE_SET.has(
+        stripePm.type as (typeof SUPPORTED_SAVED_PAYMENT_METHOD_TYPES)[number],
+      )
+    ) {
+      throw new BadRequestException(
+        `Unsupported payment method type: ${stripePm.type}`,
+      );
+    }
 
     const savedPm = await this.paymentMethodsSql.upsertFromStripeTX(
       {

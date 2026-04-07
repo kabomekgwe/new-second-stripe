@@ -11,20 +11,27 @@ import {
   FxQuoteResponse,
   CreatePaymentResponse,
   CreateCheckoutSessionResponse,
+  PaymentMethod,
+  SUPPORTED_SAVED_PAYMENT_METHOD_TYPES,
 } from '@stripe-app/shared';
 import { StripeService } from '../stripe/stripe.service';
 import { generateUniqueIdempotencyKey } from '../common/utils/idempotency';
 import { CreatePaymentDto } from './dto/create-payment.dto';
 import { CreateCheckoutSessionDto } from './dto/create-checkout-session.dto';
+import { PaymentMethodsSqlService } from '../payment-methods/payment-methods.sql.service';
 import { UsersSqlService } from '../users/users.sql.service';
 import { PaymentsSqlService } from './payments.sql.service';
 
 @Injectable()
 export class PaymentsService {
   private readonly frontendUrl: string;
+  private static readonly SUPPORTED_PAYMENT_METHOD_TYPE_SET = new Set(
+    SUPPORTED_SAVED_PAYMENT_METHOD_TYPES,
+  );
 
   constructor(
     private readonly paymentsSql: PaymentsSqlService,
+    private readonly paymentMethodsSql: PaymentMethodsSqlService,
     private readonly usersSql: UsersSqlService,
     private readonly stripeService: StripeService,
     private readonly configService: ConfigService,
@@ -84,6 +91,10 @@ export class PaymentsService {
     dto: CreatePaymentDto,
   ): Promise<CreatePaymentResponse> {
     const user = await this.findUserOrFail(userId);
+    const paymentMethod = await this.findSupportedPaymentMethodOrFail(
+      userId,
+      dto.paymentMethodId,
+    );
 
     if (!user.stripeCustomerId) {
       throw new BadRequestException(
@@ -102,13 +113,14 @@ export class PaymentsService {
       {
         amount: dto.amountGbp,
         customer: user.stripeCustomerId,
-        payment_method: dto.paymentMethodId,
-        confirm: true,
-        automatic_payment_methods: {
-          enabled: true,
-          allow_redirects: 'never',
+        payment_method: paymentMethod.stripePaymentMethodId,
+        payment_method_types: ['card'],
+        confirmation_method: 'automatic',
+        metadata: {
+          userId,
+          type: 'user_payment',
+          idempotencyKey,
         },
-        metadata: { userId, type: 'user_payment' },
         ...(dto.fxQuoteId ? { fx_quote: dto.fxQuoteId } : {}),
       } as never,
       idempotencyKey,
@@ -123,7 +135,7 @@ export class PaymentsService {
       userCurrency: null,
       fxQuoteId: dto.fxQuoteId ?? null,
       status: PaymentStatus.PENDING,
-      paymentMethodId: dto.paymentMethodId,
+      paymentMethodId: paymentMethod.stripePaymentMethodId,
       idempotencyKey,
       metadata: null,
     });
@@ -131,6 +143,8 @@ export class PaymentsService {
     return {
       clientSecret: paymentIntent.client_secret!,
       paymentIntentId: paymentIntent.id,
+      status: paymentIntent.status,
+      requiresAction: paymentIntent.status === 'requires_action',
     };
   }
 
@@ -214,5 +228,34 @@ export class PaymentsService {
       throw new NotFoundException('User not found');
     }
     return user;
+  }
+
+  private async findSupportedPaymentMethodOrFail(
+    userId: string,
+    stripePaymentMethodId: string,
+  ): Promise<PaymentMethod> {
+    const paymentMethods = await this.paymentMethodsSql.findByUserId(userId);
+    const paymentMethod =
+      paymentMethods.find(
+        (entry) => entry.stripePaymentMethodId === stripePaymentMethodId,
+      ) ?? null;
+
+    if (!paymentMethod) {
+      throw new BadRequestException(
+        'Selected payment method is not saved for this user',
+      );
+    }
+
+    if (
+      !PaymentsService.SUPPORTED_PAYMENT_METHOD_TYPE_SET.has(
+        paymentMethod.type as (typeof SUPPORTED_SAVED_PAYMENT_METHOD_TYPES)[number],
+      )
+    ) {
+      throw new BadRequestException(
+        `Payment method type ${paymentMethod.type} is not supported for this flow`,
+      );
+    }
+
+    return paymentMethod;
   }
 }

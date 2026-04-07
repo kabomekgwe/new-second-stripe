@@ -1,7 +1,10 @@
 'use client';
 
 import { useState, useEffect, useMemo } from 'react';
-import type { FxQuoteResponse } from '@stripe-app/shared';
+import {
+  SUPPORTED_SAVED_PAYMENT_METHOD_TYPES,
+  type FxQuoteResponse,
+} from '@stripe-app/shared';
 import { useGetFxQuoteMutation } from '@/lib/store/payments-api';
 import {
   useGetPaymentMethodsQuery,
@@ -13,7 +16,7 @@ import { StepAmount } from './step-amount';
 import { StepMethod } from './step-method';
 import { StepConfirmPay } from './step-confirm-pay';
 
-type Step = 'amount' | 'method' | 'checkout' | 'success' | 'error';
+type Step = 'amount' | 'method' | 'checkout' | 'success' | 'pending' | 'error';
 
 export function PaymentForm() {
   const { data: paymentMethods = [], isLoading: isLoadingPaymentMethods } =
@@ -27,17 +30,31 @@ export function PaymentForm() {
   const [quoteError, setQuoteError] = useState('');
   const [setDefaultMethod] = useSetDefaultMethodMutation();
   const [errorMessage, setErrorMessage] = useState('');
+  const supportedPaymentMethods = useMemo(
+    () =>
+      paymentMethods.filter((method) =>
+        SUPPORTED_SAVED_PAYMENT_METHOD_TYPES.includes(
+          method.type as (typeof SUPPORTED_SAVED_PAYMENT_METHOD_TYPES)[number],
+        ),
+      ),
+    [paymentMethods],
+  );
+  const unsupportedSavedMethodCount =
+    paymentMethods.length - supportedPaymentMethods.length;
 
   const defaultMethod = useMemo(
-    () => paymentMethods.find((method) => method.isDefault) ?? paymentMethods[0] ?? null,
-    [paymentMethods],
+    () =>
+      supportedPaymentMethods.find((method) => method.isDefault) ??
+      supportedPaymentMethods[0] ??
+      null,
+    [supportedPaymentMethods],
   );
   const selectedMethod = useMemo(
     () =>
-      paymentMethods.find(
+      supportedPaymentMethods.find(
         (method) => method.stripePaymentMethodId === selectedMethodId,
       ) ?? defaultMethod,
-    [defaultMethod, paymentMethods, selectedMethodId],
+    [defaultMethod, selectedMethodId, supportedPaymentMethods],
   );
 
   useEffect(() => {
@@ -91,6 +108,15 @@ export function PaymentForm() {
     );
   }
 
+  if (step === 'pending') {
+    return (
+      <PaymentStatus
+        type="pending"
+        message={errorMessage || 'Your payment is processing. We will update the final status in payment history shortly.'}
+      />
+    );
+  }
+
   const currentStepNum =
     step === 'amount' ? 1 : step === 'method' ? 2 : 3;
 
@@ -114,13 +140,14 @@ export function PaymentForm() {
 
         {step === 'method' && (
           <StepMethod
-            methods={paymentMethods}
+            methods={supportedPaymentMethods}
+            unsupportedSavedMethodCount={unsupportedSavedMethodCount}
             isLoading={isLoadingPaymentMethods}
             selectedMethodId={selectedMethodId}
             onBack={() => setStep('amount')}
             onNext={async (paymentMethodId) => {
               try {
-                const method = paymentMethods.find(
+                const method = supportedPaymentMethods.find(
                   (entry) => entry.stripePaymentMethodId === paymentMethodId,
                 );
 
@@ -154,6 +181,10 @@ export function PaymentForm() {
             fxQuoteId={fxQuote?.quoteId || undefined}
             onBack={() => setStep('method')}
             onSuccess={() => setStep('success')}
+            onPending={(message) => {
+              setStep('pending');
+              setErrorMessage(message);
+            }}
             onError={(msg) => {
               setStep('error');
               setErrorMessage(msg);

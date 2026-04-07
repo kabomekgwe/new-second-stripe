@@ -8,12 +8,14 @@ import { getMethodLabel } from './payment-utils';
 
 export function StepMethod({
   methods,
+  unsupportedSavedMethodCount,
   isLoading,
   selectedMethodId,
   onBack,
   onNext,
 }: {
   methods: PaymentMethodResponse[];
+  unsupportedSavedMethodCount: number;
   isLoading: boolean;
   selectedMethodId: string | null;
   onBack: () => void;
@@ -52,7 +54,9 @@ export function StepMethod({
         </div>
         <div className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-6">
           <p className="text-sm text-slate-600">
-            You don&apos;t have any saved payment methods yet.
+            {unsupportedSavedMethodCount > 0
+              ? 'You only have saved payment methods that are not supported in this card payment flow yet.'
+              : 'You don&apos;t have any saved payment methods yet.'}
           </p>
           <Link
             href="/payment-methods/add"
@@ -78,6 +82,12 @@ export function StepMethod({
         <p className="mt-1 text-sm text-gray-500">
           Pick the saved payment method you want Stripe to prefer for this payment.
         </p>
+        {unsupportedSavedMethodCount > 0 ? (
+          <p className="mt-2 text-sm text-amber-700">
+            {unsupportedSavedMethodCount} saved payment method
+            {unsupportedSavedMethodCount === 1 ? ' is' : 's are'} hidden because this flow currently supports cards only.
+          </p>
+        ) : null}
       </div>
 
       <div className="space-y-3">
