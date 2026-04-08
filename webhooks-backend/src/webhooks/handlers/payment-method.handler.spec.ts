@@ -73,7 +73,7 @@ describe('PaymentMethodHandler', () => {
       );
 
       expect(database.query).toHaveBeenCalledWith(
-        expect.stringContaining('MERGE INTO "payment_methods"'),
+        expect.stringContaining('MERGE INTO STRIPE_PAYMENT_METHODS'),
         expect.arrayContaining(['user_1', 'pm_visa', 'card', '4242', 'visa']),
       );
     });
@@ -104,7 +104,7 @@ describe('PaymentMethodHandler', () => {
       );
 
       const insertCall = database.query.mock.calls.find((call) =>
-        call[0].includes('MERGE INTO "payment_methods"'),
+        call[0].includes('MERGE INTO STRIPE_PAYMENT_METHODS'),
       );
       expect(insertCall).toBeDefined();
     });
@@ -150,7 +150,7 @@ describe('PaymentMethodHandler', () => {
       expect(database.transaction).toHaveBeenCalled();
       
       const setIsDefaultCall = database.query.mock.calls.find(
-        (call) => typeof call[0] === 'string' && call[0].includes('"isDefault" = :3'),
+        (call) => typeof call[0] === 'string' && call[0].includes('IS_DEFAULT = :3'),
       );
       expect(setIsDefaultCall).toBeDefined();
       expect(setIsDefaultCall[1]).toEqual(['user_1', 'pm_first', 1]);
@@ -195,7 +195,7 @@ describe('PaymentMethodHandler', () => {
       );
 
       const insertCall = database.query.mock.calls.find((call) =>
-        call[0].includes('MERGE INTO "payment_methods"'),
+        call[0].includes('MERGE INTO STRIPE_PAYMENT_METHODS'),
       );
       expect(insertCall[1]).toContain('sepa_debit');
     });
@@ -221,11 +221,11 @@ describe('PaymentMethodHandler', () => {
       } as Stripe.Event);
 
       expect(database.query).toHaveBeenCalledWith(
-        'DELETE FROM payment_methods WHERE id = :1',
+        'DELETE FROM STRIPE_PAYMENT_METHODS WHERE ID = :1',
         ['pm_1'],
       );
       expect(database.query).toHaveBeenCalledWith(
-        expect.stringContaining('UPDATE users SET "defaultPaymentMethodId" = NULL'),
+        expect.stringContaining('UPDATE USERS SET DEFAULT_PAYMENT_METHOD_ID = NULL'),
         ['user_1'],
       );
     });
@@ -262,7 +262,7 @@ describe('PaymentMethodHandler', () => {
       } as Stripe.Event);
 
       expect(database.query).not.toHaveBeenCalledWith(
-        expect.stringContaining('UPDATE users SET "defaultPaymentMethodId" = NULL'),
+        expect.stringContaining('UPDATE USERS SET DEFAULT_PAYMENT_METHOD_ID = NULL'),
         expect.any(Array),
       );
     });

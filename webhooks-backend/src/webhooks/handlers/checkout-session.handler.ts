@@ -44,7 +44,7 @@ export class CheckoutSessionHandler {
     status: PaymentStatus | null,
   ): Promise<void> {
     const paymentResult = await this.database.query<{ id: string }>(
-      'SELECT id FROM payments WHERE "stripeCheckoutSessionId" = :1 FETCH FIRST 1 ROWS ONLY',
+      'SELECT ID FROM STRIPE_PAYMENTS WHERE STRIPE_CHECKOUT_SESSION_ID = :1 FETCH FIRST 1 ROWS ONLY',
       [session.id],
     );
     const payment = paymentResult.rows[0];
@@ -62,14 +62,14 @@ export class CheckoutSessionHandler {
         : session.payment_intent?.id ?? null;
 
     await this.database.query(
-      `UPDATE payments
+      `UPDATE STRIPE_PAYMENTS
        SET
-         status = COALESCE(:2, status),
-         "stripePaymentIntentId" = :3,
-         "amountUserCurrency" = :4,
-         "userCurrency" = :5,
-         "updatedAt" = SYSTIMESTAMP
-       WHERE id = :1`,
+         STATUS = COALESCE(:2, STATUS),
+         STRIPE_PAYMENT_INTENT_ID = :3,
+         AMOUNT_USER_CURRENCY = :4,
+         USER_CURRENCY = :5,
+         UPDATED_AT = SYSTIMESTAMP
+       WHERE ID = :1`,
       [
         payment.id,
         status,

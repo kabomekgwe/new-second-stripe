@@ -13,22 +13,22 @@ export class PaymentsSqlService {
   ): Promise<Payment> {
     const newId = randomUUID();
     await this.database.query(
-      `MERGE INTO "payments" t
-       USING (SELECT :11 AS "idempotencyKey" FROM DUAL) s
-       ON (t."idempotencyKey" = s."idempotencyKey")
+      `MERGE INTO STRIPE_PAYMENTS t
+       USING (SELECT :11 AS IDEMPOTENCY_KEY FROM DUAL) s
+       ON (t.IDEMPOTENCY_KEY = s.IDEMPOTENCY_KEY)
        WHEN NOT MATCHED THEN INSERT (
-         id,
-         "userId",
-         "stripePaymentIntentId",
-         "stripeCheckoutSessionId",
-         "amountGbp",
-         "amountUserCurrency",
-         "userCurrency",
-         "fxQuoteId",
-         status,
-         "paymentMethodId",
-         "idempotencyKey",
-         metadata
+         ID,
+         USER_ID,
+         STRIPE_PAYMENT_INTENT_ID,
+         STRIPE_CHECKOUT_SESSION_ID,
+         AMOUNT_GBP,
+         AMOUNT_USER_CURRENCY,
+         USER_CURRENCY,
+         FX_QUOTE_ID,
+         STATUS,
+         PAYMENT_METHOD_ID,
+         IDEMPOTENCY_KEY,
+         METADATA
        ) VALUES (:1,:2,:3,:4,:5,:6,:7,:8,:9,:10,:11,:12)`,
       [
         newId,
@@ -48,7 +48,7 @@ export class PaymentsSqlService {
 
     // Fetch the row (either newly inserted or existing from conflict)
     const result = await this.database.query(
-      'SELECT * FROM payments WHERE "idempotencyKey" = :1 FETCH FIRST 1 ROWS ONLY',
+      'SELECT * FROM STRIPE_PAYMENTS WHERE IDEMPOTENCY_KEY = :1 FETCH FIRST 1 ROWS ONLY',
       [data.idempotencyKey],
     );
     return mapPayment(result.rows[0]);
@@ -56,7 +56,7 @@ export class PaymentsSqlService {
 
   async findByUserId(userId: string): Promise<Payment[]> {
     const result = await this.database.query(
-      'SELECT * FROM payments WHERE "userId" = :1 ORDER BY "createdAt" DESC',
+      'SELECT * FROM STRIPE_PAYMENTS WHERE USER_ID = :1 ORDER BY CREATED_AT DESC',
       [userId],
     );
     return result.rows.map(mapPayment);
@@ -64,7 +64,7 @@ export class PaymentsSqlService {
 
   async findById(id: string, userId: string): Promise<Payment | null> {
     const result = await this.database.query(
-      'SELECT * FROM payments WHERE id = :1 AND "userId" = :2 FETCH FIRST 1 ROWS ONLY',
+      'SELECT * FROM STRIPE_PAYMENTS WHERE ID = :1 AND USER_ID = :2 FETCH FIRST 1 ROWS ONLY',
       [id, userId],
     );
     return result.rows[0] ? mapPayment(result.rows[0]) : null;

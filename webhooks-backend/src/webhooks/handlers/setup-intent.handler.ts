@@ -32,7 +32,7 @@ export class SetupIntentHandler {
       id: string;
       defaultPaymentMethodId: string | null;
     }>(
-      'SELECT id, "defaultPaymentMethodId" FROM users WHERE "stripeCustomerId" = :1 FETCH FIRST 1 ROWS ONLY',
+      'SELECT ID, DEFAULT_PAYMENT_METHOD_ID FROM USERS WHERE STRIPE_CUSTOMER_ID = :1 FETCH FIRST 1 ROWS ONLY',
       [customerId],
     );
     const user = userResult.rows[0];
@@ -58,16 +58,16 @@ export class SetupIntentHandler {
   ): Promise<void> {
     const newId = randomUUID();
     await this.database.query(
-      `MERGE INTO "payment_methods" t
-       USING (SELECT :1 AS "stripePaymentMethodId" FROM DUAL) s
-       ON (t."stripePaymentMethodId" = s."stripePaymentMethodId")
+      `MERGE INTO STRIPE_PAYMENT_METHODS t
+       USING (SELECT :1 AS STRIPE_PAYMENT_METHOD_ID FROM DUAL) s
+       ON (t.STRIPE_PAYMENT_METHOD_ID = s.STRIPE_PAYMENT_METHOD_ID)
        WHEN MATCHED THEN UPDATE SET
-         "userId" = :2, "type" = :3, "last4" = :4, "brand" = :5,
-         "expiryMonth" = :6, "expiryYear" = :7, "billingEmailAddress" = :8,
-         "billingName" = :9, "stripeMetadata" = :10, "updatedAt" = SYSTIMESTAMP
+         USER_ID = :2, METHOD_TYPE = :3, LAST4 = :4, BRAND = :5,
+         EXPIRY_MONTH = :6, EXPIRY_YEAR = :7, BILLING_EMAIL_ADDRESS = :8,
+         BILLING_NAME = :9, STRIPE_METADATA = :10, UPDATED_AT = SYSTIMESTAMP
        WHEN NOT MATCHED THEN INSERT (
-         "id", "userId", "stripePaymentMethodId", "type", "last4", "brand",
-         "expiryMonth", "expiryYear", "billingEmailAddress", "billingName", "stripeMetadata"
+         ID, USER_ID, STRIPE_PAYMENT_METHOD_ID, METHOD_TYPE, LAST4, BRAND,
+         EXPIRY_MONTH, EXPIRY_YEAR, BILLING_EMAIL_ADDRESS, BILLING_NAME, STRIPE_METADATA
        ) VALUES (:11, :2, :1, :3, :4, :5, :6, :7, :8, :9, :10)`,
       [
         stripePm.id,
@@ -98,19 +98,19 @@ export class SetupIntentHandler {
 
     await this.database.transaction(async (connection: DbConnection) => {
       await this.database.query(
-        'UPDATE payment_methods SET "isDefault" = :2, "updatedAt" = SYSTIMESTAMP WHERE "userId" = :1',
+        'UPDATE STRIPE_PAYMENT_METHODS SET IS_DEFAULT = :2, UPDATED_AT = SYSTIMESTAMP WHERE USER_ID = :1',
         [userId, boolToNum(false)],
         connection,
       );
       await this.database.query(
-        `UPDATE payment_methods
-         SET "isDefault" = :3, "updatedAt" = SYSTIMESTAMP
-         WHERE "userId" = :1 AND "stripePaymentMethodId" = :2`,
+        `UPDATE STRIPE_PAYMENT_METHODS
+         SET IS_DEFAULT = :3, UPDATED_AT = SYSTIMESTAMP
+         WHERE USER_ID = :1 AND STRIPE_PAYMENT_METHOD_ID = :2`,
         [userId, stripePaymentMethodId, boolToNum(true)],
         connection,
       );
       await this.database.query(
-        'UPDATE users SET "defaultPaymentMethodId" = :2, "updatedAt" = SYSTIMESTAMP WHERE id = :1',
+        'UPDATE USERS SET DEFAULT_PAYMENT_METHOD_ID = :2, UPDATED_AT = SYSTIMESTAMP WHERE ID = :1',
         [userId, stripePaymentMethodId],
         connection,
       );

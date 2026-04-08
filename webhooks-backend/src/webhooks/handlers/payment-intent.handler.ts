@@ -55,12 +55,12 @@ export class PaymentIntentHandler {
     }
 
     await this.database.query(
-      `UPDATE payments
+      `UPDATE STRIPE_PAYMENTS
        SET
-         status = :2,
-         "stripePaymentIntentId" = COALESCE("stripePaymentIntentId", :3),
-         "updatedAt" = SYSTIMESTAMP
-       WHERE id = :1`,
+         STATUS = :2,
+         STRIPE_PAYMENT_INTENT_ID = COALESCE(STRIPE_PAYMENT_INTENT_ID, :3),
+         UPDATED_AT = SYSTIMESTAMP
+       WHERE ID = :1`,
       [payment.id, status, paymentIntent.id],
     );
     this.logger.log(
@@ -72,7 +72,7 @@ export class PaymentIntentHandler {
     paymentIntent: Stripe.PaymentIntent,
   ): Promise<{ id: string } | null> {
     const paymentResult = await this.database.query<{ id: string }>(
-      'SELECT id FROM payments WHERE "stripePaymentIntentId" = :1 FETCH FIRST 1 ROWS ONLY',
+      'SELECT ID FROM STRIPE_PAYMENTS WHERE STRIPE_PAYMENT_INTENT_ID = :1 FETCH FIRST 1 ROWS ONLY',
       [paymentIntent.id],
     );
     const payment = paymentResult.rows[0];
@@ -88,13 +88,13 @@ export class PaymentIntentHandler {
     }
 
     const fallbackResult = await this.database.query<{ id: string }>(
-      `SELECT id
-       FROM payments
-       WHERE "userId" = :1
-         AND "idempotencyKey" = :2
-         AND status = :3
-         AND "stripePaymentIntentId" IS NULL
-       ORDER BY "createdAt" DESC
+      `SELECT ID
+       FROM STRIPE_PAYMENTS
+       WHERE USER_ID = :1
+         AND IDEMPOTENCY_KEY = :2
+         AND STATUS = :3
+         AND STRIPE_PAYMENT_INTENT_ID IS NULL
+       ORDER BY CREATED_AT DESC
        FETCH FIRST 1 ROWS ONLY`,
       [metadataUserId, metadataIdempotencyKey, PaymentStatus.PENDING],
     );
@@ -107,7 +107,7 @@ export class PaymentIntentHandler {
     status: ChargeStatus,
   ): Promise<void> {
     const usageChargeResult = await this.database.query<{ id: string }>(
-      'SELECT id FROM usage_charges WHERE "stripePaymentIntentId" = :1 FETCH FIRST 1 ROWS ONLY',
+      'SELECT ID FROM STRIPE_USAGE_CHARGES WHERE STRIPE_PAYMENT_INTENT_ID = :1 FETCH FIRST 1 ROWS ONLY',
       [paymentIntent.id],
     );
     const usageCharge = usageChargeResult.rows[0];
@@ -120,7 +120,7 @@ export class PaymentIntentHandler {
     }
 
     await this.database.query(
-      'UPDATE usage_charges SET status = :2, "updatedAt" = SYSTIMESTAMP WHERE id = :1',
+      'UPDATE STRIPE_USAGE_CHARGES SET STATUS = :2, UPDATED_AT = SYSTIMESTAMP WHERE ID = :1',
       [usageCharge.id, status],
     );
     this.logger.log(

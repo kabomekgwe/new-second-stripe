@@ -48,7 +48,7 @@ export class WebhooksService {
       eventId: string;
       status: WebhookEventStatus;
     }>(
-      'SELECT "eventId", status FROM webhook_events WHERE "eventId" = :1 FETCH FIRST 1 ROWS ONLY',
+      'SELECT EVENT_ID, STATUS FROM STRIPE_WEBHOOK_EVENTS WHERE EVENT_ID = :1 FETCH FIRST 1 ROWS ONLY',
       [event.id],
     );
     const existingEvent = existingEventResult.rows[0] ?? null;
@@ -64,13 +64,13 @@ export class WebhooksService {
     }
 
     await this.database.query(
-      `MERGE INTO "webhook_events" t
-       USING (SELECT :1 AS "eventId" FROM DUAL) s
-       ON (t."eventId" = s."eventId")
+      `MERGE INTO STRIPE_WEBHOOK_EVENTS t
+       USING (SELECT :1 AS EVENT_ID FROM DUAL) s
+       ON (t.EVENT_ID = s.EVENT_ID)
        WHEN MATCHED THEN UPDATE SET
-         "type" = :2, "status" = :3, "processedAt" = :4, "lastError" = :5, "updatedAt" = SYSTIMESTAMP
+         METHOD_TYPE = :2, STATUS = :3, PROCESSED_AT = :4, LAST_ERROR = :5, UPDATED_AT = SYSTIMESTAMP
        WHEN NOT MATCHED THEN INSERT (
-         "eventId", "type", "status", "processedAt", "lastError"
+         EVENT_ID, METHOD_TYPE, STATUS, PROCESSED_AT, LAST_ERROR
        ) VALUES (:1, :2, :3, :4, :5)`,
       [event.id, event.type, WebhookEventStatus.PROCESSING, null, null],
     );
@@ -144,9 +144,9 @@ export class WebhooksService {
       }
 
       await this.database.query(
-        `UPDATE webhook_events
-         SET status = :2, "processedAt" = :3, "lastError" = NULL, "updatedAt" = SYSTIMESTAMP
-         WHERE "eventId" = :1`,
+        `UPDATE STRIPE_WEBHOOK_EVENTS
+         SET STATUS = :2, PROCESSED_AT = :3, LAST_ERROR = NULL, UPDATED_AT = SYSTIMESTAMP
+         WHERE EVENT_ID = :1`,
         [event.id, WebhookEventStatus.PROCESSED, new Date()],
       );
     } catch (error) {
@@ -154,9 +154,9 @@ export class WebhooksService {
         error instanceof Error ? error.message : 'Unknown error';
 
       await this.database.query(
-        `UPDATE webhook_events
-         SET status = :2, "lastError" = :3, "updatedAt" = SYSTIMESTAMP
-         WHERE "eventId" = :1`,
+        `UPDATE STRIPE_WEBHOOK_EVENTS
+         SET STATUS = :2, LAST_ERROR = :3, UPDATED_AT = SYSTIMESTAMP
+         WHERE EVENT_ID = :1`,
         [event.id, WebhookEventStatus.FAILED, errorMessage],
       );
 

@@ -13,12 +13,12 @@ describe('WebhooksService', () => {
 
   const database = {
     query: jest.fn(async (text: string, params: unknown[]) => {
-      if (text.includes('SELECT "eventId", status FROM webhook_events')) {
+      if (text.includes('SELECT EVENT_ID, STATUS FROM STRIPE_WEBHOOK_EVENTS')) {
         const event = webhookEventStore.get(params[0] as string);
         return { rows: event ? [event] : [] };
       }
 
-      if (text.includes('MERGE INTO "webhook_events"')) {
+      if (text.includes('MERGE INTO STRIPE_WEBHOOK_EVENTS')) {
         webhookEventStore.set(params[0] as string, {
           eventId: params[0] as string,
           status: params[2] as WebhookEventStatus,
@@ -26,7 +26,7 @@ describe('WebhooksService', () => {
         return { rows: [] };
       }
 
-      if (text.includes('SET status = :2')) {
+      if (text.includes('SET STATUS = :2')) {
         const current = webhookEventStore.get(params[0] as string);
         if (current) {
           webhookEventStore.set(params[0] as string, {

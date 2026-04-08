@@ -49,12 +49,12 @@ describe('SubscriptionHandler', () => {
 
     expect(database.query).toHaveBeenNthCalledWith(
       1,
-      'SELECT id FROM users WHERE id = :1 FETCH FIRST 1 ROWS ONLY',
+      'SELECT ID FROM USERS WHERE ID = :1 FETCH FIRST 1 ROWS ONLY',
       ['user_1'],
     );
     expect(database.query).toHaveBeenNthCalledWith(
       2,
-      expect.stringContaining('MERGE INTO "billing_subscriptions"'),
+      expect.stringContaining('MERGE INTO STRIPE_BILLING_SUBSCRIPTIONS'),
       [
         'sub_123',
         'user_1',
@@ -84,12 +84,12 @@ describe('SubscriptionHandler', () => {
 
     expect(database.query).toHaveBeenNthCalledWith(
       1,
-      'SELECT id FROM billing_subscriptions WHERE "stripeSubscriptionId" = :1 FETCH FIRST 1 ROWS ONLY',
+      'SELECT ID FROM STRIPE_BILLING_SUBSCRIPTIONS WHERE STRIPE_SUBSCRIPTION_ID = :1 FETCH FIRST 1 ROWS ONLY',
       ['sub_123'],
     );
     expect(database.query).toHaveBeenNthCalledWith(
       2,
-      expect.stringContaining('UPDATE billing_subscriptions'),
+      expect.stringContaining('UPDATE STRIPE_BILLING_SUBSCRIPTIONS'),
       ['local_sub_1', BillingSubscriptionStatus.CANCELED, 0, expect.any(Date)],
     );
   });

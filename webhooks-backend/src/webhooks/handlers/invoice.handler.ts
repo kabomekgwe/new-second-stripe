@@ -61,13 +61,13 @@ export class InvoiceHandler {
 
     for (const charge of charges) {
       await this.database.query(
-        `UPDATE usage_charges
+        `UPDATE STRIPE_USAGE_CHARGES
          SET
-           "stripeInvoiceId" = :2,
-           "stripePaymentIntentId" = :3,
-           status = :4,
-           "updatedAt" = SYSTIMESTAMP
-         WHERE id = :1`,
+           STRIPE_INVOICE_ID = :2,
+           STRIPE_PAYMENT_INTENT_ID = :3,
+           STATUS = :4,
+           UPDATED_AT = SYSTIMESTAMP
+         WHERE ID = :1`,
         [charge.id, invoice.id, paymentIntentId, status],
       );
 
@@ -111,12 +111,12 @@ export class InvoiceHandler {
       );
 
       const chargeResult = await this.database.query<{ id: string }>(
-        `SELECT id
-         FROM usage_charges
-         WHERE "stripeSubscriptionId" = :1
-           AND "stripeSubscriptionItemId" = :2
-           AND "billingPeriodStart" = :3
-           AND "billingPeriodEnd" = :4
+        `SELECT ID
+         FROM STRIPE_USAGE_CHARGES
+         WHERE STRIPE_SUBSCRIPTION_ID = :1
+           AND STRIPE_SUBSCRIPTION_ITEM_ID = :2
+           AND BILLING_PERIOD_START = :3
+           AND BILLING_PERIOD_END = :4
          FETCH FIRST 1 ROWS ONLY`,
         [subscriptionId, subscriptionItemId, billingPeriodStart, billingPeriodEnd],
       );
@@ -151,17 +151,17 @@ export class InvoiceHandler {
       name: string;
     }>(
       `SELECT
-         uc.id,
-         uc."amountGbp",
-         uc.description,
-         uc."billingPeriodStart",
-         uc."billingPeriodEnd",
-         uc."emailSentAt",
-         u.email,
-         u.name
-       FROM usage_charges uc
-       JOIN users u ON u.id = uc."userId"
-       WHERE uc.id = :1
+         uc.ID,
+         uc.AMOUNT_GBP,
+         uc.DESCRIPTION,
+         uc.BILLING_PERIOD_START,
+         uc.BILLING_PERIOD_END,
+         uc.EMAIL_SENT_AT,
+         u.EMAIL,
+         u.USER_NAME
+       FROM STRIPE_USAGE_CHARGES uc
+       JOIN USERS u ON u.ID = uc.USER_ID
+       WHERE uc.ID = :1
        FETCH FIRST 1 ROWS ONLY`,
       [chargeId],
     );
@@ -188,7 +188,7 @@ export class InvoiceHandler {
     });
 
     await this.database.query(
-      `UPDATE usage_charges SET "emailSentAt" = SYSTIMESTAMP, "updatedAt" = SYSTIMESTAMP WHERE id = :1`,
+      `UPDATE STRIPE_USAGE_CHARGES SET EMAIL_SENT_AT = SYSTIMESTAMP, UPDATED_AT = SYSTIMESTAMP WHERE ID = :1`,
       [chargeId],
     );
   }

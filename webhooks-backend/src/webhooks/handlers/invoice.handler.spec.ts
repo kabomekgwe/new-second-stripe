@@ -63,12 +63,12 @@ describe('InvoiceHandler', () => {
 
     expect(database.query).toHaveBeenNthCalledWith(
       1,
-      expect.stringContaining('SELECT id'),
+      expect.stringContaining('SELECT ID'),
       ['sub_123', 'si_123', expect.any(Date), expect.any(Date)],
     );
     expect(database.query).toHaveBeenNthCalledWith(
       2,
-      expect.stringContaining('UPDATE usage_charges'),
+      expect.stringContaining('UPDATE STRIPE_USAGE_CHARGES'),
       ['charge_1', 'in_123', 'pi_123', ChargeStatus.PROCESSING],
     );
     expect(emailService.sendInvoiceEmail).not.toHaveBeenCalled();
@@ -97,7 +97,7 @@ describe('InvoiceHandler', () => {
 
     expect(database.query).toHaveBeenNthCalledWith(
       2,
-      expect.stringContaining('UPDATE usage_charges'),
+      expect.stringContaining('UPDATE STRIPE_USAGE_CHARGES'),
       ['charge_1', 'in_123', 'pi_123', ChargeStatus.PAID],
     );
     expect(emailService.sendInvoiceEmail).toHaveBeenCalledWith({
@@ -111,7 +111,7 @@ describe('InvoiceHandler', () => {
     });
     expect(database.query).toHaveBeenNthCalledWith(
       4,
-      expect.stringContaining('emailSentAt'),
+      expect.stringContaining('EMAIL_SENT_AT'),
       ['charge_1'],
     );
   });

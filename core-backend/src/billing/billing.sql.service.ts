@@ -23,10 +23,10 @@ export class BillingSqlService {
 
   async findBillableUsers(): Promise<User[]> {
     const result = await this.database.query(
-      `SELECT * FROM users
-       WHERE "monthlyManagementFee" > 0
-         AND "defaultPaymentMethodId" IS NOT NULL
-         AND "stripeCustomerId" IS NOT NULL`,
+      `SELECT * FROM USERS
+       WHERE MONTHLY_MANAGEMENT_FEE > 0
+         AND DEFAULT_PAYMENT_METHOD_ID IS NOT NULL
+         AND STRIPE_CUSTOMER_ID IS NOT NULL`,
     );
     return result.rows.map(mapUser);
   }
@@ -35,7 +35,7 @@ export class BillingSqlService {
     idempotencyKey: string,
   ): Promise<UsageCharge | null> {
     const result = await this.database.query(
-      'SELECT * FROM usage_charges WHERE "idempotencyKey" = :1 FETCH FIRST 1 ROWS ONLY',
+      'SELECT * FROM STRIPE_USAGE_CHARGES WHERE IDEMPOTENCY_KEY = :1 FETCH FIRST 1 ROWS ONLY',
       [idempotencyKey],
     );
     return result.rows[0] ? mapUsageCharge(result.rows[0]) : null;
@@ -43,7 +43,7 @@ export class BillingSqlService {
 
   async listUsageChargesByUserId(userId: string): Promise<UsageCharge[]> {
     const result = await this.database.query(
-      'SELECT * FROM usage_charges WHERE "userId" = :1 ORDER BY "billingPeriodStart" DESC',
+      'SELECT * FROM STRIPE_USAGE_CHARGES WHERE USER_ID = :1 ORDER BY BILLING_PERIOD_START DESC',
       [userId],
     );
     return result.rows.map(mapUsageCharge);
@@ -53,26 +53,26 @@ export class BillingSqlService {
     data: Omit<UsageCharge, 'id' | 'createdAt' | 'updatedAt' | 'user'>,
   ): Promise<UsageCharge> {
     await this.database.query(
-      `MERGE INTO "usage_charges" t
-       USING (SELECT :12 AS "idempotencyKey" FROM DUAL) s
-       ON (t."idempotencyKey" = s."idempotencyKey")
+      `MERGE INTO STRIPE_USAGE_CHARGES t
+       USING (SELECT :12 AS IDEMPOTENCY_KEY FROM DUAL) s
+       ON (t.IDEMPOTENCY_KEY = s.IDEMPOTENCY_KEY)
        WHEN MATCHED THEN UPDATE SET
-         "stripeInvoiceId" = :3,
-         "stripeSubscriptionId" = :4,
-         "stripeSubscriptionItemId" = :5,
-         "stripePaymentIntentId" = :6,
-         "amountGbp" = :7,
-         description = :8,
-         "billingPeriodStart" = :9,
-         "billingPeriodEnd" = :10,
-         status = :11,
-         "usageReportedAt" = :13,
-         "updatedAt" = SYSTIMESTAMP
+         STRIPE_INVOICE_ID = :3,
+         STRIPE_SUBSCRIPTION_ID = :4,
+         STRIPE_SUBSCRIPTION_ITEM_ID = :5,
+         STRIPE_PAYMENT_INTENT_ID = :6,
+         AMOUNT_GBP = :7,
+         DESCRIPTION = :8,
+         BILLING_PERIOD_START = :9,
+         BILLING_PERIOD_END = :10,
+         STATUS = :11,
+         USAGE_REPORTED_AT = :13,
+         UPDATED_AT = SYSTIMESTAMP
        WHEN NOT MATCHED THEN INSERT (
-         id, "userId", "stripeInvoiceId", "stripeSubscriptionId",
-         "stripeSubscriptionItemId", "stripePaymentIntentId", "amountGbp",
-         description, "billingPeriodStart", "billingPeriodEnd", status,
-         "idempotencyKey", "usageReportedAt"
+         ID, USER_ID, STRIPE_INVOICE_ID, STRIPE_SUBSCRIPTION_ID,
+         STRIPE_SUBSCRIPTION_ITEM_ID, STRIPE_PAYMENT_INTENT_ID, AMOUNT_GBP,
+         DESCRIPTION, BILLING_PERIOD_START, BILLING_PERIOD_END, STATUS,
+         IDEMPOTENCY_KEY, USAGE_REPORTED_AT
        ) VALUES (:1,:2,:3,:4,:5,:6,:7,:8,:9,:10,:11,:12,:13)`,
       [
         randomUUID(),
@@ -92,7 +92,7 @@ export class BillingSqlService {
     );
 
     const result = await this.database.query(
-      'SELECT * FROM usage_charges WHERE "idempotencyKey" = :1',
+      'SELECT * FROM STRIPE_USAGE_CHARGES WHERE IDEMPOTENCY_KEY = :1',
       [data.idempotencyKey],
     );
     return mapUsageCharge(result.rows[0]);
@@ -102,7 +102,7 @@ export class BillingSqlService {
     userId: string,
   ): Promise<BillingSubscription | null> {
     const result = await this.database.query(
-      'SELECT * FROM billing_subscriptions WHERE "userId" = :1 ORDER BY "updatedAt" DESC FETCH FIRST 1 ROWS ONLY',
+      'SELECT * FROM STRIPE_BILLING_SUBSCRIPTIONS WHERE USER_ID = :1 ORDER BY UPDATED_AT DESC FETCH FIRST 1 ROWS ONLY',
       [userId],
     );
     return result.rows[0] ? mapBillingSubscription(result.rows[0]) : null;
@@ -112,7 +112,7 @@ export class BillingSqlService {
     stripeSubscriptionId: string,
   ): Promise<BillingSubscription | null> {
     const result = await this.database.query(
-      'SELECT * FROM billing_subscriptions WHERE "stripeSubscriptionId" = :1 FETCH FIRST 1 ROWS ONLY',
+      'SELECT * FROM STRIPE_BILLING_SUBSCRIPTIONS WHERE STRIPE_SUBSCRIPTION_ID = :1 FETCH FIRST 1 ROWS ONLY',
       [stripeSubscriptionId],
     );
     return result.rows[0] ? mapBillingSubscription(result.rows[0]) : null;
@@ -122,23 +122,23 @@ export class BillingSqlService {
     data: Omit<BillingSubscription, 'id' | 'createdAt' | 'updatedAt' | 'user'>,
   ): Promise<BillingSubscription> {
     await this.database.query(
-      `MERGE INTO "billing_subscriptions" t
-       USING (SELECT :3 AS "stripeSubscriptionId" FROM DUAL) s
-       ON (t."stripeSubscriptionId" = s."stripeSubscriptionId")
+      `MERGE INTO STRIPE_BILLING_SUBSCRIPTIONS t
+       USING (SELECT :3 AS STRIPE_SUBSCRIPTION_ID FROM DUAL) s
+       ON (t.STRIPE_SUBSCRIPTION_ID = s.STRIPE_SUBSCRIPTION_ID)
        WHEN MATCHED THEN UPDATE SET
-         "userId" = :2,
-         "stripeSubscriptionItemId" = :4,
-         "stripePriceId" = :5,
-         status = :6,
-         "currentPeriodStart" = :7,
-         "currentPeriodEnd" = :8,
-         "cancelAtPeriodEnd" = :9,
-         "canceledAt" = :10,
-         "updatedAt" = SYSTIMESTAMP
+         USER_ID = :2,
+         STRIPE_SUBSCRIPTION_ITEM_ID = :4,
+         STRIPE_PRICE_ID = :5,
+         STATUS = :6,
+         CURRENT_PERIOD_START = :7,
+         CURRENT_PERIOD_END = :8,
+         CANCEL_AT_PERIOD_END = :9,
+         CANCELED_AT = :10,
+         UPDATED_AT = SYSTIMESTAMP
        WHEN NOT MATCHED THEN INSERT (
-         id, "userId", "stripeSubscriptionId", "stripeSubscriptionItemId",
-         "stripePriceId", status, "currentPeriodStart", "currentPeriodEnd",
-         "cancelAtPeriodEnd", "canceledAt"
+         ID, USER_ID, STRIPE_SUBSCRIPTION_ID, STRIPE_SUBSCRIPTION_ITEM_ID,
+         STRIPE_PRICE_ID, STATUS, CURRENT_PERIOD_START, CURRENT_PERIOD_END,
+         CANCEL_AT_PERIOD_END, CANCELED_AT
        ) VALUES (:1,:2,:3,:4,:5,:6,:7,:8,:9,:10)`,
       [
         randomUUID(),
@@ -155,7 +155,7 @@ export class BillingSqlService {
     );
 
     const result = await this.database.query(
-      'SELECT * FROM billing_subscriptions WHERE "stripeSubscriptionId" = :1',
+      'SELECT * FROM STRIPE_BILLING_SUBSCRIPTIONS WHERE STRIPE_SUBSCRIPTION_ID = :1',
       [data.stripeSubscriptionId],
     );
     return mapBillingSubscription(result.rows[0]);
@@ -171,7 +171,7 @@ export class BillingSqlService {
     stripeSubscriptionId: string,
   ): Promise<void> {
     await this.database.query(
-      'DELETE FROM billing_subscriptions WHERE "stripeSubscriptionId" = :1',
+      'DELETE FROM STRIPE_BILLING_SUBSCRIPTIONS WHERE STRIPE_SUBSCRIPTION_ID = :1',
       [stripeSubscriptionId],
     );
   }

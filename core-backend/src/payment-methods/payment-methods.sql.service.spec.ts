@@ -63,23 +63,23 @@ describe('PaymentMethodsSqlService', () => {
 
     testUserId = randomUUID();
     await rawQuery(
-      `MERGE INTO "users" dst
-       USING (SELECT :1 AS "id" FROM dual) src ON (dst."id" = src."id")
+      `MERGE INTO USERS dst
+       USING (SELECT :1 AS ID FROM dual) src ON (dst.ID = src.ID)
        WHEN NOT MATCHED THEN
-         INSERT ("id", "email", "password", "name", "country", "currency")
+         INSERT (ID, EMAIL, PASSWORD, USER_NAME, COUNTRY, CURRENCY)
          VALUES (:1, :2, :3, :4, :5, :6)`,
       [testUserId, `test-${testUserId}@example.com`, 'hashed', 'Test User', 'GB', 'GBP'],
     );
   });
 
   afterAll(async () => {
-    await rawQuery('DELETE FROM "payment_methods"');
-    await rawQuery(`DELETE FROM "users" WHERE "email" LIKE 'test-%@example.com'`);
+    await rawQuery('DELETE FROM STRIPE_PAYMENT_METHODS');
+    await rawQuery(`DELETE FROM USERS WHERE EMAIL LIKE 'test-%@example.com'`);
     await pool.close(0);
   });
 
   beforeEach(async () => {
-    await rawQuery('DELETE FROM "payment_methods"');
+    await rawQuery('DELETE FROM STRIPE_PAYMENT_METHODS');
   });
 
   describe('upsertFromStripe', () => {
@@ -138,7 +138,7 @@ describe('PaymentMethodsSqlService', () => {
       expect(updated.isDefault).toBe(true);
 
       const all = await rawQuery(
-        'SELECT * FROM "payment_methods" WHERE "stripePaymentMethodId" = :1',
+        'SELECT * FROM STRIPE_PAYMENT_METHODS WHERE STRIPE_PAYMENT_METHOD_ID = :1',
         ['pm_stripe_conflict'],
       );
       expect(all.rows.length).toBe(1);
@@ -304,10 +304,10 @@ describe('PaymentMethodsSqlService', () => {
     it('filters by userId when provided', async () => {
       const otherUserId = randomUUID();
       await rawQuery(
-        `MERGE INTO "users" dst
-         USING (SELECT :1 AS "id" FROM dual) src ON (dst."id" = src."id")
+        `MERGE INTO USERS dst
+         USING (SELECT :1 AS ID FROM dual) src ON (dst.ID = src.ID)
          WHEN NOT MATCHED THEN
-           INSERT ("id", "email", "password", "name", "country", "currency")
+           INSERT (ID, EMAIL, PASSWORD, USER_NAME, COUNTRY, CURRENCY)
            VALUES (:1, :2, :3, :4, :5, :6)`,
         [otherUserId, `other-${otherUserId}@example.com`, 'hashed', 'Other', 'GB', 'GBP'],
       );
@@ -376,10 +376,10 @@ describe('PaymentMethodsSqlService', () => {
     it('returns empty array for user with no payment methods', async () => {
       const lonelyUserId = randomUUID();
       await rawQuery(
-        `MERGE INTO "users" dst
-         USING (SELECT :1 AS "id" FROM dual) src ON (dst."id" = src."id")
+        `MERGE INTO USERS dst
+         USING (SELECT :1 AS ID FROM dual) src ON (dst.ID = src.ID)
          WHEN NOT MATCHED THEN
-           INSERT ("id", "email", "password", "name", "country", "currency")
+           INSERT (ID, EMAIL, PASSWORD, USER_NAME, COUNTRY, CURRENCY)
            VALUES (:1, :2, :3, :4, :5, :6)`,
         [lonelyUserId, `lonely-${lonelyUserId}@example.com`, 'hashed', 'Lonely', 'GB', 'GBP'],
       );
@@ -447,7 +447,7 @@ describe('PaymentMethodsSqlService', () => {
       });
 
       const result = await rawQuery<{ CNT: number }>(
-        'SELECT COUNT(*) AS "CNT" FROM "payment_methods" WHERE "stripePaymentMethodId" = :1',
+        'SELECT COUNT(*) AS CNT FROM STRIPE_PAYMENT_METHODS WHERE STRIPE_PAYMENT_METHOD_ID = :1',
         ['pm_unique_test'],
       );
 

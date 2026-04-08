@@ -25,9 +25,9 @@ export class OracleService implements OnModuleInit, OnModuleDestroy {
 
     await this.query(`
       BEGIN
-        EXECUTE IMMEDIATE 'CREATE TABLE "schema_migrations" (
-          "id" VARCHAR2(255) PRIMARY KEY,
-          "runAt" TIMESTAMP WITH TIME ZONE DEFAULT SYSTIMESTAMP NOT NULL
+        EXECUTE IMMEDIATE 'CREATE TABLE SCHEMA_MIGRATIONS (
+          ID VARCHAR2(255) PRIMARY KEY,
+          RUN_AT TIMESTAMP WITH TIME ZONE DEFAULT SYSTIMESTAMP NOT NULL
         )';
       EXCEPTION
         WHEN OTHERS THEN IF SQLCODE != -955 THEN RAISE; END IF;
@@ -36,7 +36,7 @@ export class OracleService implements OnModuleInit, OnModuleDestroy {
 
     for (const migration of SQL_MIGRATIONS) {
       const existing = await this.query<{ id: string }>(
-        'SELECT "id" FROM "schema_migrations" WHERE "id" = :1',
+        'SELECT ID FROM SCHEMA_MIGRATIONS WHERE ID = :1',
         [migration.id],
       );
 
@@ -45,7 +45,7 @@ export class OracleService implements OnModuleInit, OnModuleDestroy {
       await this.transaction(async (connection) => {
         await this.query(migration.sql, [], connection);
         await this.query(
-          'INSERT INTO "schema_migrations" ("id") VALUES (:1)',
+          'INSERT INTO SCHEMA_MIGRATIONS (ID) VALUES (:1)',
           [migration.id],
           connection,
         );

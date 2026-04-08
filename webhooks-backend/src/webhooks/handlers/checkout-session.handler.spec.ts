@@ -42,12 +42,12 @@ describe('CheckoutSessionHandler', () => {
 
     expect(database.query).toHaveBeenNthCalledWith(
       1,
-      'SELECT id FROM payments WHERE "stripeCheckoutSessionId" = :1 FETCH FIRST 1 ROWS ONLY',
+      'SELECT ID FROM STRIPE_PAYMENTS WHERE STRIPE_CHECKOUT_SESSION_ID = :1 FETCH FIRST 1 ROWS ONLY',
       ['cs_paid'],
     );
     expect(database.query).toHaveBeenNthCalledWith(
       2,
-      expect.stringContaining('UPDATE payments'),
+      expect.stringContaining('UPDATE STRIPE_PAYMENTS'),
       ['payment_1', PaymentStatus.SUCCEEDED, 'pi_test', 1200, 'GBP'],
     );
   });
@@ -62,7 +62,7 @@ describe('CheckoutSessionHandler', () => {
 
     expect(database.query).toHaveBeenNthCalledWith(
       2,
-      expect.stringContaining('UPDATE payments'),
+      expect.stringContaining('UPDATE STRIPE_PAYMENTS'),
       ['payment_2', null, 'pi_test', 1200, 'GBP'],
     );
   });

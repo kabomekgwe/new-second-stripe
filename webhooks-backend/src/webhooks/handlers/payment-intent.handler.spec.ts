@@ -58,22 +58,22 @@ describe('PaymentIntentHandler', () => {
 
     expect(database.query).toHaveBeenNthCalledWith(
       1,
-      'SELECT id FROM usage_charges WHERE "stripePaymentIntentId" = :1 FETCH FIRST 1 ROWS ONLY',
+      'SELECT ID FROM STRIPE_USAGE_CHARGES WHERE STRIPE_PAYMENT_INTENT_ID = :1 FETCH FIRST 1 ROWS ONLY',
       ['pi_management_fee'],
     );
     expect(database.query).toHaveBeenNthCalledWith(
       2,
-      'UPDATE usage_charges SET status = :2, "updatedAt" = SYSTIMESTAMP WHERE id = :1',
+      'UPDATE STRIPE_USAGE_CHARGES SET STATUS = :2, UPDATED_AT = SYSTIMESTAMP WHERE ID = :1',
       ['charge_1', ChargeStatus.PAID],
     );
     expect(database.query).toHaveBeenNthCalledWith(
       3,
-      'SELECT id FROM payments WHERE "stripePaymentIntentId" = :1 FETCH FIRST 1 ROWS ONLY',
+      'SELECT ID FROM STRIPE_PAYMENTS WHERE STRIPE_PAYMENT_INTENT_ID = :1 FETCH FIRST 1 ROWS ONLY',
       ['pi_management_fee'],
     );
     expect(database.query).toHaveBeenNthCalledWith(
       4,
-      expect.stringContaining('UPDATE payments'),
+      expect.stringContaining('UPDATE STRIPE_PAYMENTS'),
       ['payment_1', PaymentStatus.SUCCEEDED, 'pi_management_fee'],
     );
   });
@@ -89,17 +89,17 @@ describe('PaymentIntentHandler', () => {
 
     expect(database.query).toHaveBeenNthCalledWith(
       1,
-      'SELECT id FROM payments WHERE "stripePaymentIntentId" = :1 FETCH FIRST 1 ROWS ONLY',
+      'SELECT ID FROM STRIPE_PAYMENTS WHERE STRIPE_PAYMENT_INTENT_ID = :1 FETCH FIRST 1 ROWS ONLY',
       ['pi_user_payment'],
     );
     expect(database.query).toHaveBeenNthCalledWith(
       2,
-      expect.stringContaining('FROM payments'),
+      expect.stringContaining('FROM STRIPE_PAYMENTS'),
       ['user_1', 'payment:user_1:1250:pm_card_1', PaymentStatus.PENDING],
     );
     expect(database.query).toHaveBeenNthCalledWith(
       3,
-      expect.stringContaining('UPDATE payments'),
+      expect.stringContaining('UPDATE STRIPE_PAYMENTS'),
       ['payment_2', PaymentStatus.SUCCEEDED, 'pi_user_payment'],
     );
   });

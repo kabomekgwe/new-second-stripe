@@ -161,7 +161,7 @@ describe('Webhook Failure and Retry Logic', () => {
       await service.handleEvent(Buffer.from('{}'), 'sig');
 
       const updateCall = database.query.mock.calls.find((call) =>
-        call[0].includes('UPDATE webhook_events'),
+        call[0].includes('UPDATE STRIPE_WEBHOOK_EVENTS'),
       )!;
       expect(updateCall).toBeDefined();
       expect(updateCall[1]).toContain(WebhookEventStatus.PROCESSED);

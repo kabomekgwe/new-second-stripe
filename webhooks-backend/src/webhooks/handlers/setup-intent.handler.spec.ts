@@ -96,7 +96,7 @@ describe('SetupIntentHandler', () => {
       );
 
       expect(database.query).toHaveBeenCalledWith(
-        expect.stringContaining('MERGE INTO "payment_methods"'),
+        expect.stringContaining('MERGE INTO STRIPE_PAYMENT_METHODS'),
         expect.arrayContaining(['user_1', 'pm_synced', 'card', '4242', 'visa']),
       );
     });
@@ -147,7 +147,7 @@ describe('SetupIntentHandler', () => {
 
       expect(database.transaction).toHaveBeenCalled();
       expect(database.query).toHaveBeenCalledWith(
-        expect.stringContaining('"isDefault" = :3'),
+        expect.stringContaining('IS_DEFAULT = :3'),
         expect.any(Array),
         expect.any(Object),
       );
@@ -218,7 +218,7 @@ describe('SetupIntentHandler', () => {
       );
 
       const insertCall = database.query.mock.calls.find((call) =>
-        call[0].includes('MERGE INTO "payment_methods"'),
+        call[0].includes('MERGE INTO STRIPE_PAYMENT_METHODS'),
       );
       expect(insertCall[1]).toContain('sepa_debit');
     });

@@ -27,7 +27,7 @@ export class SubscriptionHandler {
   async handleDeleted(event: Stripe.Event): Promise<void> {
     const subscription = event.data.object as Stripe.Subscription;
     const existingResult = await this.database.query<{ id: string }>(
-      'SELECT id FROM billing_subscriptions WHERE "stripeSubscriptionId" = :1 FETCH FIRST 1 ROWS ONLY',
+      'SELECT ID FROM STRIPE_BILLING_SUBSCRIPTIONS WHERE STRIPE_SUBSCRIPTION_ID = :1 FETCH FIRST 1 ROWS ONLY',
       [subscription.id],
     );
     const existing = existingResult.rows[0];
@@ -40,13 +40,13 @@ export class SubscriptionHandler {
     }
 
     await this.database.query(
-      `UPDATE billing_subscriptions
+      `UPDATE STRIPE_BILLING_SUBSCRIPTIONS
        SET
-         status = :2,
-         "cancelAtPeriodEnd" = :3,
-         "canceledAt" = :4,
-         "updatedAt" = SYSTIMESTAMP
-       WHERE id = :1`,
+         STATUS = :2,
+         CANCEL_AT_PERIOD_END = :3,
+         CANCELED_AT = :4,
+         UPDATED_AT = SYSTIMESTAMP
+       WHERE ID = :1`,
       [
         existing.id,
         BillingSubscriptionStatus.CANCELED,
@@ -86,17 +86,17 @@ export class SubscriptionHandler {
 
     const newId = randomUUID();
     await this.database.query(
-      `MERGE INTO "billing_subscriptions" t
-       USING (SELECT :1 AS "stripeSubscriptionId" FROM DUAL) s
-       ON (t."stripeSubscriptionId" = s."stripeSubscriptionId")
+      `MERGE INTO STRIPE_BILLING_SUBSCRIPTIONS t
+       USING (SELECT :1 AS STRIPE_SUBSCRIPTION_ID FROM DUAL) s
+       ON (t.STRIPE_SUBSCRIPTION_ID = s.STRIPE_SUBSCRIPTION_ID)
        WHEN MATCHED THEN UPDATE SET
-         "userId" = :2, "stripeSubscriptionItemId" = :3, "stripePriceId" = :4,
-         "status" = :5, "currentPeriodStart" = :6, "currentPeriodEnd" = :7,
-         "cancelAtPeriodEnd" = :8, "canceledAt" = :9, "updatedAt" = SYSTIMESTAMP
+         USER_ID = :2, STRIPE_SUBSCRIPTION_ITEM_ID = :3, STRIPE_PRICE_ID = :4,
+         STATUS = :5, CURRENT_PERIOD_START = :6, CURRENT_PERIOD_END = :7,
+         CANCEL_AT_PERIOD_END = :8, CANCELED_AT = :9, UPDATED_AT = SYSTIMESTAMP
        WHEN NOT MATCHED THEN INSERT (
-         "id", "userId", "stripeSubscriptionId", "stripeSubscriptionItemId",
-         "stripePriceId", "status", "currentPeriodStart", "currentPeriodEnd",
-         "cancelAtPeriodEnd", "canceledAt"
+         ID, USER_ID, STRIPE_SUBSCRIPTION_ID, STRIPE_SUBSCRIPTION_ITEM_ID,
+         STRIPE_PRICE_ID, STATUS, CURRENT_PERIOD_START, CURRENT_PERIOD_END,
+         CANCEL_AT_PERIOD_END, CANCELED_AT
        ) VALUES (:10, :2, :1, :3, :4, :5, :6, :7, :8, :9)`,
       [
         subscription.id,
@@ -121,7 +121,7 @@ export class SubscriptionHandler {
     const metadataUserId = subscription.metadata?.userId;
     if (metadataUserId) {
       const userResult = await this.database.query<{ id: string }>(
-        'SELECT id FROM users WHERE id = :1 FETCH FIRST 1 ROWS ONLY',
+        'SELECT ID FROM USERS WHERE ID = :1 FETCH FIRST 1 ROWS ONLY',
         [metadataUserId],
       );
       return userResult.rows[0] ?? null;
@@ -136,7 +136,7 @@ export class SubscriptionHandler {
     }
 
     const userResult = await this.database.query<{ id: string }>(
-      'SELECT id FROM users WHERE "stripeCustomerId" = :1 FETCH FIRST 1 ROWS ONLY',
+      'SELECT ID FROM USERS WHERE STRIPE_CUSTOMER_ID = :1 FETCH FIRST 1 ROWS ONLY',
       [customerId],
     );
     return userResult.rows[0] ?? null;
