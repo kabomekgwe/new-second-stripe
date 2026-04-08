@@ -1,7 +1,8 @@
 import { Test, TestingModule } from '@nestjs/testing';
+import { INestApplication, ValidationPipe } from '@nestjs/common';
+import * as request from 'supertest';
 import { PaymentMethodsController } from './payment-methods.controller';
 import { PaymentMethodsService } from './payment-methods.service';
-import { BadRequestException } from '@nestjs/common';
 
 describe('PaymentMethodsController', () => {
   let controller: PaymentMethodsController;
@@ -111,12 +112,37 @@ describe('PaymentMethodsController', () => {
       );
     });
 
-    it('validation is handled by ValidationPipe (documented)', async () => {
-      // ValidationPipe validates the DTO before reaching the controller
-      // Invalid formats like 'invalid_id' are rejected with 400 Bad Request
-      // The IsValidPaymentMethodId decorator ensures format: /^pm_[a-zA-Z0-9]+$/
-      // This is tested in integration tests with ValidationPipe enabled
-      expect(true).toBe(true);
+    it('rejects invalid stripePaymentMethodId format via ValidationPipe', async () => {
+      const { AuthenticatedGuard } = await import(
+        '../auth/guards/authenticated.guard'
+      );
+
+      const moduleRef = await Test.createTestingModule({
+        controllers: [PaymentMethodsController],
+        providers: [
+          { provide: PaymentMethodsService, useValue: paymentMethodsService },
+        ],
+      })
+        .overrideGuard(AuthenticatedGuard)
+        .useValue({ canActivate: () => true })
+        .compile();
+
+      const app: INestApplication = moduleRef.createNestApplication();
+      app.useGlobalPipes(new ValidationPipe({ transform: true, whitelist: true }));
+      await app.init();
+
+      const response = await request(app.getHttpServer())
+        .post('/payment-methods/sync')
+        .send({ stripePaymentMethodId: 'invalid!@#' })
+        .expect(400);
+
+      expect(response.body.message).toEqual(
+        expect.arrayContaining([
+          expect.stringContaining('Invalid Stripe payment method ID format'),
+        ]),
+      );
+
+      await app.close();
     });
 
     it('logs success and failure', async () => {

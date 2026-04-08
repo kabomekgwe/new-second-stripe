@@ -57,10 +57,10 @@ export class PaymentMethodsController {
   ) {
     const pmId = body.stripePaymentMethodId;
     const userId = (req.user as User).id;
-    this.logger.log(`Syncing payment method ${pmId} for user ${userId} (body keys: ${Object.keys(body).join(', ')})`);
+    this.logger.log(`Syncing payment method ${pmId}`);
 
     if (!pmId) {
-      this.logger.error(`Received empty stripePaymentMethodId. Raw body: ${JSON.stringify(body)}`);
+      this.logger.error('Received empty stripePaymentMethodId');
       throw new BadRequestException('stripePaymentMethodId is required');
     }
 
@@ -71,8 +71,9 @@ export class PaymentMethodsController {
       );
       this.logger.log(`Successfully synced payment method ${pmId}`);
       return result;
-    } catch (error) {
-      this.logger.error(`Failed to sync payment method ${pmId}: ${error.message}`);
+    } catch (error: unknown) {
+      const message = error instanceof Error ? error.message : 'Unknown error';
+      this.logger.error(`Failed to sync payment method ${pmId}: ${message}`);
       throw error;
     }
   }

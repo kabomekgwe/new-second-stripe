@@ -1,6 +1,6 @@
 import type { ApiError } from '@stripe-app/shared';
 
-const API_URL = process.env.NEXT_PUBLIC_CORE_API_URL || 'http://localhost:3001';
+const API_URL = process.env.NEXT_PUBLIC_CORE_API_URL || 'http://localhost:4917';
 
 class ApiClient {
   private baseUrl: string;

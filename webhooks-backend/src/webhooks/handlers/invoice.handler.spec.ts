@@ -85,11 +85,13 @@ describe('InvoiceHandler', () => {
           description: 'Management fee',
           billingPeriodStart: new Date('2026-03-01'),
           billingPeriodEnd: new Date('2026-03-31'),
+          emailSentAt: null,
           email: 'user@example.com',
           name: 'User One',
         },
       ],
     });
+    database.query.mockResolvedValueOnce({ rows: [] });
 
     await handler.handlePaid(buildEvent('invoice.paid', buildInvoice()));
 
@@ -107,5 +109,33 @@ describe('InvoiceHandler', () => {
       periodEnd: new Date('2026-03-31'),
       chargeId: 'charge_1',
     });
+    expect(database.query).toHaveBeenNthCalledWith(
+      4,
+      expect.stringContaining('emailSentAt'),
+      ['charge_1'],
+    );
+  });
+
+  it('skips sending email if already sent', async () => {
+    database.query.mockResolvedValueOnce({ rows: [{ id: 'charge_1' }] });
+    database.query.mockResolvedValueOnce({ rows: [] });
+    database.query.mockResolvedValueOnce({
+      rows: [
+        {
+          id: 'charge_1',
+          amountGbp: 2500,
+          description: 'Management fee',
+          billingPeriodStart: new Date('2026-03-01'),
+          billingPeriodEnd: new Date('2026-03-31'),
+          emailSentAt: new Date('2026-04-01'),
+          email: 'user@example.com',
+          name: 'User One',
+        },
+      ],
+    });
+
+    await handler.handlePaid(buildEvent('invoice.paid', buildInvoice()));
+
+    expect(emailService.sendInvoiceEmail).not.toHaveBeenCalled();
   });
 });

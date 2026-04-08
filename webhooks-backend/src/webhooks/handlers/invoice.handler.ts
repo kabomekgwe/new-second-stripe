@@ -74,7 +74,7 @@ export class InvoiceHandler {
       );
 
       if (status === ChargeStatus.PAID) {
-        await this.sendInvoiceEmail(charge.id);
+        await this.sendInvoiceEmailOnce(charge.id);
       }
     }
   }
@@ -143,13 +143,14 @@ export class InvoiceHandler {
     return charges;
   }
 
-  private async sendInvoiceEmail(chargeId: string): Promise<void> {
+  private async sendInvoiceEmailOnce(chargeId: string): Promise<void> {
     const result = await this.database.query<{
       id: string;
       amountGbp: number;
       description: string | null;
       billingPeriodStart: Date;
       billingPeriodEnd: Date;
+      emailSentAt: Date | null;
       email: string;
       name: string;
     }>(
@@ -160,6 +161,7 @@ export class InvoiceHandler {
           uc.description,
           uc."billingPeriodStart",
           uc."billingPeriodEnd",
+          uc."emailSentAt",
           u.email,
           u.name
         FROM usage_charges uc
@@ -176,6 +178,11 @@ export class InvoiceHandler {
       return;
     }
 
+    if (charge.emailSentAt) {
+      this.logger.debug(`Invoice email already sent for charge ${chargeId} at ${charge.emailSentAt}`);
+      return;
+    }
+
     await this.emailService.sendInvoiceEmail({
       to: charge.email,
       userName: charge.name,
@@ -185,6 +192,11 @@ export class InvoiceHandler {
       periodEnd: new Date(charge.billingPeriodEnd),
       chargeId: charge.id,
     });
+
+    await this.database.query(
+      `UPDATE usage_charges SET "emailSentAt" = now(), "updatedAt" = now() WHERE id = $1`,
+      [chargeId],
+    );
   }
 
   private toPeriodDate(timestamp: number): Date {

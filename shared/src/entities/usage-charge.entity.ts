@@ -55,6 +55,9 @@ export class UsageCharge {
   @Column({ type: 'timestamp', nullable: true })
   usageReportedAt: Date | null;
 
+  @Column({ type: 'timestamp', nullable: true })
+  emailSentAt: Date | null;
+
   @CreateDateColumn()
   createdAt: Date;
 

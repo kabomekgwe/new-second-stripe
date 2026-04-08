@@ -121,7 +121,7 @@ export class PaymentsService {
         amount: dto.amountGbp,
         customer: user.stripeCustomerId,
         payment_method: paymentMethod.stripePaymentMethodId,
-        payment_method_types: ['card'],
+        payment_method_types: [...SUPPORTED_SAVED_PAYMENT_METHOD_TYPES],
         confirmation_method: 'automatic',
         metadata: {
           userId,

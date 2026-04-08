@@ -51,7 +51,6 @@ describe('Auth Integration Tests', () => {
         password: 'SecurePass123!',
         name: 'Test User',
         country: 'US',
-        currency: 'USD',
       };
 
       const response = await request(app.getHttpServer())
@@ -71,7 +70,6 @@ describe('Auth Integration Tests', () => {
         password: 'SecurePass123!',
         name: 'Test User',
         country: 'US',
-        currency: 'USD',
       };
 
       // First registration
@@ -104,7 +102,6 @@ describe('Auth Integration Tests', () => {
         password: 'SecurePass123!',
         name: 'Login Test',
         country: 'US',
-        currency: 'USD',
       };
 
       await request(app.getHttpServer())
@@ -148,7 +145,6 @@ describe('Auth Integration Tests', () => {
           password: 'SecurePass123!',
           name: 'Me Test',
           country: 'US',
-          currency: 'USD',
         });
 
       const loginResponse = await request(app.getHttpServer())

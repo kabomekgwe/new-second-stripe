@@ -2,15 +2,6 @@ import { Injectable } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import Stripe from 'stripe';
 
-type FxQuoteResponse = {
-  id: string;
-  from_amount: number;
-  from_currencies?: string[];
-  to_amount: number;
-  to_currency: string;
-  expires_at?: string;
-};
-
 @Injectable()
 export class StripeService {
   private stripe: Stripe;
@@ -19,25 +10,87 @@ export class StripeService {
     const secretKey = this.configService.get<string>('STRIPE_SECRET_KEY', '');
     const nodeEnv = this.configService.get<string>('NODE_ENV', 'development');
 
-    if (nodeEnv === 'production' && secretKey.endsWith('_xxx')) {
+    if (
+      nodeEnv === 'production' &&
+      (!secretKey ||
+        secretKey.endsWith('_xxx') ||
+        secretKey === 'sk_test_placeholder')
+    ) {
       throw new Error('STRIPE_SECRET_KEY must be configured with a real value');
     }
 
-    this.stripe = new Stripe(
-      secretKey,
-      { apiVersion: '2026-02-25.clover' },
-    );
+    if (!secretKey) {
+      throw new Error(
+        'STRIPE_SECRET_KEY is required. Set it in your .env file.',
+      );
+    }
+
+    this.stripe = new Stripe(secretKey, { apiVersion: '2026-02-25.clover' });
   }
 
+  async createFxQuote(
+    params: {
+      from_currency: string;
+      to_currency: string;
+      from_amount: number;
+      lock_duration: string;
+    },
+    idempotencyKey: string,
+  ): Promise<{
+    id: string;
+    from_amount: number;
+    from_currencies?: string[];
+    to_amount: number;
+    to_currency: string;
+    expires_at?: string;
+  }> {
+    // FxQuotes is a beta/preview Stripe API — use rawRequest
+    const response = await this.stripe.rawRequest(
+      'POST',
+      '/v1/fx_quotes',
+      {
+        'from_currencies[]': [params.from_currency],
+        to_currency: params.to_currency,
+        from_amount: params.from_amount,
+        lock_duration: params.lock_duration,
+      },
+      { idempotencyKey },
+    );
+
+    return response as unknown as {
+      id: string;
+      from_amount: number;
+      from_currencies?: string[];
+      to_amount: number;
+      to_currency: string;
+      expires_at?: string;
+    };
+  }
+
+  // --- Customers ---
   async createCustomer(
     params: Stripe.CustomerCreateParams,
     idempotencyKey: string,
   ): Promise<Stripe.Customer> {
-    return this.stripe.customers.create(params, {
-      idempotencyKey,
-    });
+    return this.stripe.customers.create(params, { idempotencyKey });
   }
 
+  async updateCustomerDefaultPaymentMethod(
+    customerId: string,
+    paymentMethodId: string | null,
+  ): Promise<Stripe.Customer> {
+    const params =
+      paymentMethodId === null
+        ? ({
+            invoice_settings: { default_payment_method: null },
+          } as unknown as Stripe.CustomerUpdateParams)
+        : ({
+            invoice_settings: { default_payment_method: paymentMethodId },
+          } satisfies Stripe.CustomerUpdateParams);
+    return this.stripe.customers.update(customerId, params);
+  }
+
+  // --- Setup Intents ---
   async createSetupIntent(
     customerId: string,
     idempotencyKey: string,
@@ -52,39 +105,25 @@ export class StripeService {
     );
   }
 
+  async listSetupIntents(
+    customerId: string,
+    limit = 10,
+  ): Promise<Stripe.ApiList<Stripe.SetupIntent>> {
+    return this.stripe.setupIntents.list({ customer: customerId, limit });
+  }
+
+  // --- Payment Intents ---
   async createPaymentIntent(
     params: Omit<Stripe.PaymentIntentCreateParams, 'currency'>,
     idempotencyKey: string,
   ): Promise<Stripe.PaymentIntent> {
     return this.stripe.paymentIntents.create(
-      {
-        ...params,
-        currency: 'gbp',
-      },
+      { ...params, currency: 'gbp' },
       { idempotencyKey },
     );
   }
 
-  async createFxQuote(
-    params: {
-      from_currency: string;
-      to_currency: string;
-      from_amount: number;
-      lock_duration: string;
-    },
-    idempotencyKey: string,
-  ): Promise<FxQuoteResponse> {
-    // FxQuotes is a beta/preview Stripe API — use rawRequest
-    const response = await this.stripe.rawRequest('POST', '/v1/fx_quotes', {
-      'from_currencies[]': [params.from_currency],
-      to_currency: params.to_currency,
-      from_amount: params.from_amount,
-      lock_duration: params.lock_duration,
-    }, { idempotencyKey });
-
-    return response as unknown as FxQuoteResponse;
-  }
-
+  // --- Checkout Sessions ---
   async createCheckoutSession(
     params: Stripe.Checkout.SessionCreateParams,
     idempotencyKey: string,
@@ -92,6 +131,7 @@ export class StripeService {
     return this.stripe.checkout.sessions.create(params, { idempotencyKey });
   }
 
+  // --- Payment Methods ---
   async listPaymentMethods(
     customerId: string,
   ): Promise<Stripe.ApiList<Stripe.PaymentMethod>> {
@@ -113,42 +153,7 @@ export class StripeService {
     });
   }
 
-  async getPaymentMethodConfigurations(): Promise<
-    Stripe.ApiList<Stripe.PaymentMethodConfiguration>
-  > {
-    return this.stripe.paymentMethodConfigurations.list();
-  }
-
-  async updateCustomerDefaultPaymentMethod(
-    customerId: string,
-    paymentMethodId: string | null,
-  ): Promise<Stripe.Customer> {
-    const params =
-      paymentMethodId === null
-        ? ({
-            invoice_settings: {
-              default_payment_method: null,
-            },
-          } as unknown as Stripe.CustomerUpdateParams)
-        : ({
-            invoice_settings: {
-              default_payment_method: paymentMethodId,
-            },
-          } satisfies Stripe.CustomerUpdateParams);
-
-    return this.stripe.customers.update(customerId, params);
-  }
-
-  async listSetupIntents(
-    customerId: string,
-    limit = 10,
-  ): Promise<Stripe.ApiList<Stripe.SetupIntent>> {
-    return this.stripe.setupIntents.list({
-      customer: customerId,
-      limit,
-    });
-  }
-
+  // --- Subscriptions ---
   async listSubscriptions(
     customerId: string,
     limit = 10,
@@ -160,16 +165,6 @@ export class StripeService {
     });
   }
 
-  async retrievePrice(priceId: string): Promise<Stripe.Price> {
-    return this.stripe.prices.retrieve(priceId);
-  }
-
-  async retrieveBillingMeter(
-    meterId: string,
-  ): Promise<Stripe.Billing.Meter> {
-    return this.stripe.billing.meters.retrieve(meterId);
-  }
-
   async createBillingSubscription(params: {
     customerId: string;
     priceId: string;
@@ -179,12 +174,11 @@ export class StripeService {
       customer: params.customerId,
       collection_method: 'charge_automatically',
       items: [{ price: params.priceId }],
-      metadata: {
-        userId: params.userId,
-      },
+      metadata: { userId: params.userId },
     });
   }
 
+  // --- Billing / Usage ---
   async createMeterEvent(params: {
     eventName: string;
     customerId: string;
@@ -203,22 +197,27 @@ export class StripeService {
     });
   }
 
-  async createUsageRecord(params: {
-    eventName: string;
-    customerId: string;
-    value: number;
-    identifier: string;
-    timestamp: number;
-  }): Promise<Stripe.Billing.MeterEvent> {
-    return this.createMeterEvent({
-      eventName: params.eventName,
-      customerId: params.customerId,
-      value: params.value,
-      identifier: params.identifier,
-      timestamp: params.timestamp,
-    });
+  async retrievePrice(priceId: string): Promise<Stripe.Price> {
+    return this.stripe.prices.retrieve(priceId);
   }
 
+  // Cached meter event name
+  private cachedMeterEventName: string | null = null;
+
+  async getBillingMeterEventName(priceId: string): Promise<string> {
+    if (this.cachedMeterEventName) return this.cachedMeterEventName;
+    const price = await this.stripe.prices.retrieve(priceId);
+    const meterId = price.recurring?.meter;
+    if (!meterId)
+      throw new Error(
+        `Price ${priceId} is not configured with a billing meter`,
+      );
+    const meter = await this.stripe.billing.meters.retrieve(meterId);
+    this.cachedMeterEventName = meter.event_name;
+    return this.cachedMeterEventName;
+  }
+
+  // --- Webhooks ---
   constructWebhookEvent(
     rawBody: Buffer,
     signature: string,
@@ -227,7 +226,8 @@ export class StripeService {
     return this.stripe.webhooks.constructEvent(rawBody, signature, secret);
   }
 
-  getStripeInstance(): Stripe {
+  // --- Direct access (use sparingly) ---
+  getClient(): Stripe {
     return this.stripe;
   }
 }

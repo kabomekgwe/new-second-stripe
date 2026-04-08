@@ -35,10 +35,5 @@ export function getReadableErrorMessage(
     }
   }
 
-  try {
-    const serialized = JSON.stringify(error);
-    return serialized && serialized !== '{}' ? serialized : fallback;
-  } catch {
-    return fallback;
-  }
+  return fallback;
 }

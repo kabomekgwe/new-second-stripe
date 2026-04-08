@@ -93,6 +93,7 @@ export class PaymentIntentHandler {
        WHERE "userId" = $1
          AND "idempotencyKey" = $2
          AND status = $3
+         AND "stripePaymentIntentId" IS NULL
        ORDER BY "createdAt" DESC
        LIMIT 1`,
       [metadataUserId, metadataIdempotencyKey, PaymentStatus.PENDING],

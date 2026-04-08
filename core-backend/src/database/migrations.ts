@@ -121,4 +121,11 @@ export const SQL_MIGRATIONS: SqlMigration[] = [
         ON billing_subscriptions ("userId");
     `,
   },
+  {
+    id: '002_add_email_sent_at_to_usage_charges',
+    sql: `
+      ALTER TABLE usage_charges
+        ADD COLUMN IF NOT EXISTS "emailSentAt" timestamptz;
+    `,
+  },
 ];

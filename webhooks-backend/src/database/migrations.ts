@@ -142,4 +142,11 @@ export const SQL_MIGRATIONS: SqlMigration[] = [
       COMMENT ON COLUMN payment_methods."stripeMetadata" IS 'Full metadata from Stripe payment method object';
     `,
   },
+  {
+    id: '003_add_email_sent_at_to_usage_charges',
+    sql: `
+      ALTER TABLE usage_charges
+        ADD COLUMN IF NOT EXISTS "emailSentAt" timestamptz;
+    `,
+  },
 ];

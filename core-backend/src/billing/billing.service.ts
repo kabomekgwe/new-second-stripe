@@ -16,7 +16,6 @@ import { BillingSqlService } from './billing.sql.service';
 export class BillingService {
   private readonly logger = new Logger(BillingService.name);
   private readonly billingPriceId: string;
-  private billingMeterEventName: string | null = null;
 
   constructor(
     private readonly billingSql: BillingSqlService,
@@ -28,18 +27,14 @@ export class BillingService {
       '',
     );
     const nodeEnv = this.configService.get<string>('NODE_ENV', 'development');
-    if (nodeEnv === 'production') {
-      if (!this.billingPriceId || this.billingPriceId.endsWith('_xxx')) {
-        throw new Error(
-          'STRIPE_BILLING_METERED_PRICE_ID must be configured with a real value',
-        );
-      }
-    } else {
-      if (!this.billingPriceId) {
-        this.logger.warn(
-          'STRIPE_BILLING_METERED_PRICE_ID is not set — billing features will not work',
-        );
-      }
+    if (
+      nodeEnv === 'production' &&
+      (!this.billingPriceId || this.billingPriceId.endsWith('_xxx'))
+    ) {
+      throw new Error('STRIPE_BILLING_METERED_PRICE_ID must be configured');
+    }
+    if (!this.billingPriceId && nodeEnv !== 'production') {
+      this.logger.warn('STRIPE_BILLING_METERED_PRICE_ID is not set');
     }
   }
 
@@ -59,7 +54,6 @@ export class BillingService {
     errors: Array<{ userId: string; error: string }>;
   }> {
     const users = await this.billingSql.findBillableUsers();
-
     const results = {
       total: users.length,
       succeeded: 0,
@@ -67,18 +61,15 @@ export class BillingService {
       skipped: 0,
       errors: [] as Array<{ userId: string; error: string }>,
     };
-
     for (const user of users) {
       try {
         const charge = await this.reportUsageForUser(
           user,
           Number(user.monthlyManagementFee),
         );
-        if (charge.status === ChargeStatus.PROCESSING) {
-          results.succeeded++;
-        } else {
-          results.skipped++;
-        }
+        results[
+          charge.status === ChargeStatus.PROCESSING ? 'succeeded' : 'skipped'
+        ]++;
       } catch (error) {
         results.failed++;
         const message =
@@ -90,7 +81,6 @@ export class BillingService {
         );
       }
     }
-
     return results;
   }
 
@@ -103,10 +93,8 @@ export class BillingService {
     amount: number,
     description?: string,
   ): Promise<UsageCharge> {
-    if (!user.stripeCustomerId) {
+    if (!user.stripeCustomerId)
       throw new Error(`User ${user.id} does not have a Stripe customer`);
-    }
-
     const subscription = await this.ensureBillingSubscription(user);
     const period = this.getCurrentBillingPeriod();
     const idempotencyKey = generateUniqueIdempotencyKey(
@@ -114,28 +102,19 @@ export class BillingService {
       user.id,
       period.key,
     );
-    const existing = await this.billingSql.findUsageChargeByIdempotencyKey(
-      idempotencyKey,
+    const existing =
+      await this.billingSql.findUsageChargeByIdempotencyKey(idempotencyKey);
+    if (existing) return existing;
+    const eventName = await this.stripeService.getBillingMeterEventName(
+      this.getBillingPriceId(),
     );
-    const chargeDescription = description ?? `Management fee – ${period.key}`;
-    const usageTimestamp = Math.floor(Date.now() / 1000);
-
-    if (existing) {
-      this.logger.log(
-        `Usage charge already exists for user ${user.id} period ${period.key}`,
-      );
-      return existing;
-    }
-
-    const eventName = await this.getBillingMeterEventName();
     await this.stripeService.createMeterEvent({
       eventName,
       customerId: user.stripeCustomerId,
       value: amount,
       identifier: idempotencyKey,
-      timestamp: usageTimestamp,
+      timestamp: Math.floor(Date.now() / 1000),
     });
-
     return this.billingSql.upsertUsageCharge({
       userId: user.id,
       stripeInvoiceId: null,
@@ -143,7 +122,7 @@ export class BillingService {
       stripeSubscriptionItemId: subscription.stripeSubscriptionItemId,
       stripePaymentIntentId: null,
       amountGbp: amount,
-      description: chargeDescription,
+      description: description ?? `Management fee - ${period.key}`,
       billingPeriodStart: period.start,
       billingPeriodEnd: period.end,
       status: ChargeStatus.PROCESSING,
@@ -155,79 +134,56 @@ export class BillingService {
   private async ensureBillingSubscription(
     user: User,
   ): Promise<BillingSubscription> {
-    const localSubscription =
-      await this.billingSql.findBillingSubscriptionByUserId(user.id);
-
-    if (
-      localSubscription &&
-      localSubscription.status !== BillingSubscriptionStatus.CANCELED
-    ) {
-      return localSubscription;
-    }
-
-    const stripeSubscriptions = await this.stripeService.listSubscriptions(
+    const local = await this.billingSql.findBillingSubscriptionByUserId(
+      user.id,
+    );
+    if (local && local.status !== BillingSubscriptionStatus.CANCELED)
+      return local;
+    const subs = await this.stripeService.listSubscriptions(
       user.stripeCustomerId!,
     );
-    const existingStripeSubscription = stripeSubscriptions.data.find(
-      (subscription) =>
-        subscription.items.data.some(
-          (item) => item.price.id === this.getBillingPriceId(),
-        ) && subscription.status !== 'canceled',
+    const existing = subs.data.find(
+      (s) =>
+        s.items.data.some((i) => i.price.id === this.getBillingPriceId()) &&
+        s.status !== 'canceled',
     );
-
-    if (existingStripeSubscription) {
-      return this.upsertBillingSubscription(user.id, existingStripeSubscription);
-    }
-
-    if (!user.defaultPaymentMethodId) {
-      throw new Error(
-        `User ${user.id} must have a default payment method before billing`,
-      );
-    }
-
+    if (existing) return this.upsertBillingSubscription(user.id, existing);
+    if (!user.defaultPaymentMethodId)
+      throw new Error(`User ${user.id} needs default payment method`);
     await this.stripeService.updateCustomerDefaultPaymentMethod(
       user.stripeCustomerId!,
       user.defaultPaymentMethodId,
     );
-
-    const createdSubscription =
-      await this.stripeService.createBillingSubscription({
-        customerId: user.stripeCustomerId!,
-        priceId: this.getBillingPriceId(),
-        userId: user.id,
-      });
-
-    return this.upsertBillingSubscription(user.id, createdSubscription);
+    const created = await this.stripeService.createBillingSubscription({
+      customerId: user.stripeCustomerId!,
+      priceId: this.getBillingPriceId(),
+      userId: user.id,
+    });
+    return this.upsertBillingSubscription(user.id, created);
   }
 
   private async upsertBillingSubscription(
     userId: string,
     subscription: Stripe.Subscription,
   ): Promise<BillingSubscription> {
-    const rawSub = subscription as unknown as Record<string, unknown>;
-    const periodStart =
-      typeof rawSub.current_period_start === 'number'
-        ? new Date(rawSub.current_period_start * 1000)
-        : null;
-    const periodEnd =
-      typeof rawSub.current_period_end === 'number'
-        ? new Date(rawSub.current_period_end * 1000)
-        : null;
-    const subscriptionItem = subscription.items.data[0];
-    if (!subscriptionItem) {
-      throw new Error(
-        `Stripe subscription ${subscription.id} does not have a subscription item`,
-      );
-    }
-
+    const raw = subscription as unknown as Record<string, unknown>;
+    const subItem = subscription.items.data[0];
+    if (!subItem)
+      throw new Error(`Subscription ${subscription.id} missing item`);
     return this.billingSql.upsertBillingSubscription({
       userId,
       stripeSubscriptionId: subscription.id,
-      stripeSubscriptionItemId: subscriptionItem.id,
-      stripePriceId: subscriptionItem.price.id,
+      stripeSubscriptionItemId: subItem.id,
+      stripePriceId: subItem.price.id,
       status: subscription.status as BillingSubscriptionStatus,
-      currentPeriodStart: periodStart,
-      currentPeriodEnd: periodEnd,
+      currentPeriodStart:
+        typeof raw.current_period_start === 'number'
+          ? new Date(raw.current_period_start * 1000)
+          : null,
+      currentPeriodEnd:
+        typeof raw.current_period_end === 'number'
+          ? new Date(raw.current_period_end * 1000)
+          : null,
       cancelAtPeriodEnd: subscription.cancel_at_period_end,
       canceledAt: subscription.canceled_at
         ? new Date(subscription.canceled_at * 1000)
@@ -235,25 +191,15 @@ export class BillingService {
     });
   }
 
-  private getCurrentBillingPeriod(referenceDate = new Date()): {
+  private getCurrentBillingPeriod(d = new Date()): {
     key: string;
     start: Date;
     end: Date;
   } {
-    const start = new Date(
-      Date.UTC(referenceDate.getUTCFullYear(), referenceDate.getUTCMonth(), 1),
-    );
-    const end = new Date(
-      Date.UTC(
-        referenceDate.getUTCFullYear(),
-        referenceDate.getUTCMonth() + 1,
-        0,
-      ),
-    );
     return {
-      key: `${referenceDate.getUTCFullYear()}-${String(referenceDate.getUTCMonth() + 1).padStart(2, '0')}`,
-      start,
-      end,
+      key: `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, '0')}`,
+      start: new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), 1)),
+      end: new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth() + 1, 0)),
     };
   }
 
@@ -261,35 +207,17 @@ export class BillingService {
     meterEventName: string;
     priceId: string;
   }> {
-    const meterEventName = await this.getBillingMeterEventName();
-    return { meterEventName, priceId: this.getBillingPriceId() };
+    return {
+      meterEventName: await this.stripeService.getBillingMeterEventName(
+        this.getBillingPriceId(),
+      ),
+      priceId: this.getBillingPriceId(),
+    };
   }
 
   private getBillingPriceId(): string {
-    if (!this.billingPriceId) {
-      throw new Error('STRIPE_BILLING_METERED_PRICE_ID is not configured');
-    }
-
+    if (!this.billingPriceId)
+      throw new Error('STRIPE_BILLING_METERED_PRICE_ID not configured');
     return this.billingPriceId;
-  }
-
-  private async getBillingMeterEventName(): Promise<string> {
-    if (this.billingMeterEventName) {
-      return this.billingMeterEventName;
-    }
-
-    const price = await this.stripeService.retrievePrice(
-      this.getBillingPriceId(),
-    );
-    const meterId = price.recurring?.meter;
-    if (!meterId) {
-      throw new Error(
-        `Price ${this.billingPriceId} is not configured with a billing meter`,
-      );
-    }
-
-    const meter = await this.stripeService.retrieveBillingMeter(meterId);
-    this.billingMeterEventName = meter.event_name;
-    return this.billingMeterEventName;
   }
 }

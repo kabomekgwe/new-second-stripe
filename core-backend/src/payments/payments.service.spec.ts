@@ -40,6 +40,8 @@ describe('PaymentsService', () => {
       usersSql.findById.mockResolvedValue({
         id: 'user_1',
         stripeCustomerId: 'cus_123',
+        country: 'GB',
+        currency: 'gbp',
       });
       paymentMethodsSql.findByUserId.mockResolvedValue([
         {

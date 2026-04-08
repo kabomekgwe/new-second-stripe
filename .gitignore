@@ -184,8 +184,9 @@ stripe-webhook-secret*
 # ============================================
 # Misc Project-Specific
 # ============================================
-# Playwright MCP logs
+# Playwright MCP logs & CLI artifacts
 .playwright-mcp/
+.playwright-cli/
 
 # Agent/AI tool directories
 .agents/

@@ -5,7 +5,7 @@ import type { BaseQueryFn, FetchArgs, FetchBaseQueryError } from '@reduxjs/toolk
 let csrfToken: string | null = null;
 
 const baseQuery = fetchBaseQuery({
-  baseUrl: process.env.NEXT_PUBLIC_CORE_API_URL || 'http://localhost:3001',
+  baseUrl: process.env.NEXT_PUBLIC_CORE_API_URL || 'http://localhost:4917',
   credentials: 'include',
   prepareHeaders: (headers) => {
     headers.set('Content-Type', 'application/json');
@@ -18,7 +18,7 @@ const baseQuery = fetchBaseQuery({
  */
 async function fetchCsrfToken(): Promise<string> {
   const response = await fetch(
-    `${process.env.NEXT_PUBLIC_CORE_API_URL || 'http://localhost:3001'}/csrf/token`,
+    `${process.env.NEXT_PUBLIC_CORE_API_URL || 'http://localhost:4917'}/csrf/token`,
     { credentials: 'include' }
   );
   if (!response.ok) {
