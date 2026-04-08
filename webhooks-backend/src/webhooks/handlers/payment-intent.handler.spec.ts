@@ -58,17 +58,17 @@ describe('PaymentIntentHandler', () => {
 
     expect(database.query).toHaveBeenNthCalledWith(
       1,
-      'SELECT id FROM usage_charges WHERE "stripePaymentIntentId" = $1 LIMIT 1',
+      'SELECT id FROM usage_charges WHERE "stripePaymentIntentId" = :1 FETCH FIRST 1 ROWS ONLY',
       ['pi_management_fee'],
     );
     expect(database.query).toHaveBeenNthCalledWith(
       2,
-      'UPDATE usage_charges SET status = $2, "updatedAt" = now() WHERE id = $1',
+      'UPDATE usage_charges SET status = :2, "updatedAt" = SYSTIMESTAMP WHERE id = :1',
       ['charge_1', ChargeStatus.PAID],
     );
     expect(database.query).toHaveBeenNthCalledWith(
       3,
-      'SELECT id FROM payments WHERE "stripePaymentIntentId" = $1 LIMIT 1',
+      'SELECT id FROM payments WHERE "stripePaymentIntentId" = :1 FETCH FIRST 1 ROWS ONLY',
       ['pi_management_fee'],
     );
     expect(database.query).toHaveBeenNthCalledWith(
@@ -89,7 +89,7 @@ describe('PaymentIntentHandler', () => {
 
     expect(database.query).toHaveBeenNthCalledWith(
       1,
-      'SELECT id FROM payments WHERE "stripePaymentIntentId" = $1 LIMIT 1',
+      'SELECT id FROM payments WHERE "stripePaymentIntentId" = :1 FETCH FIRST 1 ROWS ONLY',
       ['pi_user_payment'],
     );
     expect(database.query).toHaveBeenNthCalledWith(

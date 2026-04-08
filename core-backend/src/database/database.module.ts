@@ -1,9 +1,9 @@
 import { Global, Module } from '@nestjs/common';
-import { PostgresService } from './postgres.service';
+import { OracleService } from './oracle.service';
 
 @Global()
 @Module({
-  providers: [PostgresService],
-  exports: [PostgresService],
+  providers: [OracleService],
+  exports: [OracleService],
 })
 export class DatabaseModule {}

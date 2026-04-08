@@ -1,14 +1,17 @@
 import { Injectable, Logger } from '@nestjs/common';
+import { randomUUID } from 'crypto';
 import Stripe from 'stripe';
 import { BillingSubscriptionStatus } from '@stripe-app/shared';
-import { PostgresService } from '../../database/postgres.service';
+import { OracleService } from '../../database/oracle.service';
+
+const boolToNum = (v?: boolean): number => v ? 1 : 0;
 
 @Injectable()
 export class SubscriptionHandler {
   private readonly logger = new Logger(SubscriptionHandler.name);
 
   constructor(
-    private readonly database: PostgresService,
+    private readonly database: OracleService,
   ) {}
 
   async handleCreated(event: Stripe.Event): Promise<void> {
@@ -24,7 +27,7 @@ export class SubscriptionHandler {
   async handleDeleted(event: Stripe.Event): Promise<void> {
     const subscription = event.data.object as Stripe.Subscription;
     const existingResult = await this.database.query<{ id: string }>(
-      'SELECT id FROM billing_subscriptions WHERE "stripeSubscriptionId" = $1 LIMIT 1',
+      'SELECT id FROM billing_subscriptions WHERE "stripeSubscriptionId" = :1 FETCH FIRST 1 ROWS ONLY',
       [subscription.id],
     );
     const existing = existingResult.rows[0];
@@ -37,18 +40,17 @@ export class SubscriptionHandler {
     }
 
     await this.database.query(
-      `
-        UPDATE billing_subscriptions
-        SET
-          status = $2,
-          "cancelAtPeriodEnd" = false,
-          "canceledAt" = $3,
-          "updatedAt" = now()
-        WHERE id = $1
-      `,
+      `UPDATE billing_subscriptions
+       SET
+         status = :2,
+         "cancelAtPeriodEnd" = :3,
+         "canceledAt" = :4,
+         "updatedAt" = SYSTIMESTAMP
+       WHERE id = :1`,
       [
         existing.id,
         BillingSubscriptionStatus.CANCELED,
+        boolToNum(false),
         subscription.canceled_at
           ? new Date(subscription.canceled_at * 1000)
           : new Date(),
@@ -82,43 +84,33 @@ export class SubscriptionHandler {
       return;
     }
 
+    const newId = randomUUID();
     await this.database.query(
-      `
-        INSERT INTO billing_subscriptions (
-          id,
-          "userId",
-          "stripeSubscriptionId",
-          "stripeSubscriptionItemId",
-          "stripePriceId",
-          status,
-          "currentPeriodStart",
-          "currentPeriodEnd",
-          "cancelAtPeriodEnd",
-          "canceledAt"
-        ) VALUES (gen_random_uuid(), $1, $2, $3, $4, $5, $6, $7, $8, $9)
-        ON CONFLICT ("stripeSubscriptionId") DO UPDATE SET
-          "userId" = EXCLUDED."userId",
-          "stripeSubscriptionItemId" = EXCLUDED."stripeSubscriptionItemId",
-          "stripePriceId" = EXCLUDED."stripePriceId",
-          status = EXCLUDED.status,
-          "currentPeriodStart" = EXCLUDED."currentPeriodStart",
-          "currentPeriodEnd" = EXCLUDED."currentPeriodEnd",
-          "cancelAtPeriodEnd" = EXCLUDED."cancelAtPeriodEnd",
-          "canceledAt" = EXCLUDED."canceledAt",
-          "updatedAt" = now()
-      `,
+      `MERGE INTO "billing_subscriptions" t
+       USING (SELECT :1 AS "stripeSubscriptionId" FROM DUAL) s
+       ON (t."stripeSubscriptionId" = s."stripeSubscriptionId")
+       WHEN MATCHED THEN UPDATE SET
+         "userId" = :2, "stripeSubscriptionItemId" = :3, "stripePriceId" = :4,
+         "status" = :5, "currentPeriodStart" = :6, "currentPeriodEnd" = :7,
+         "cancelAtPeriodEnd" = :8, "canceledAt" = :9, "updatedAt" = SYSTIMESTAMP
+       WHEN NOT MATCHED THEN INSERT (
+         "id", "userId", "stripeSubscriptionId", "stripeSubscriptionItemId",
+         "stripePriceId", "status", "currentPeriodStart", "currentPeriodEnd",
+         "cancelAtPeriodEnd", "canceledAt"
+       ) VALUES (:10, :2, :1, :3, :4, :5, :6, :7, :8, :9)`,
       [
-        user.id,
         subscription.id,
+        user.id,
         subscriptionItem.id,
         subscriptionItem.price.id,
         subscription.status as BillingSubscriptionStatus,
         periodStart,
         periodEnd,
-        subscription.cancel_at_period_end,
+        boolToNum(subscription.cancel_at_period_end),
         subscription.canceled_at
           ? new Date(subscription.canceled_at * 1000)
           : null,
+        newId,
       ],
     );
   }
@@ -129,7 +121,7 @@ export class SubscriptionHandler {
     const metadataUserId = subscription.metadata?.userId;
     if (metadataUserId) {
       const userResult = await this.database.query<{ id: string }>(
-        'SELECT id FROM users WHERE id = $1 LIMIT 1',
+        'SELECT id FROM users WHERE id = :1 FETCH FIRST 1 ROWS ONLY',
         [metadataUserId],
       );
       return userResult.rows[0] ?? null;
@@ -144,7 +136,7 @@ export class SubscriptionHandler {
     }
 
     const userResult = await this.database.query<{ id: string }>(
-      'SELECT id FROM users WHERE "stripeCustomerId" = $1 LIMIT 1',
+      'SELECT id FROM users WHERE "stripeCustomerId" = :1 FETCH FIRST 1 ROWS ONLY',
       [customerId],
     );
     return userResult.rows[0] ?? null;

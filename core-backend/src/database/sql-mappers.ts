@@ -29,6 +29,15 @@ function toDate(value: NullableDate): Date | null {
   return value instanceof Date ? value : new Date(value);
 }
 
+function parseJson(value: unknown): Record<string, unknown> | null {
+  if (value === null || value === undefined) return null;
+  if (typeof value === 'object') return value as Record<string, unknown>;
+  if (typeof value === 'string') {
+    try { return JSON.parse(value); } catch { return null; }
+  }
+  return null;
+}
+
 export function mapUser(row: Record<string, unknown>): User {
   return {
     id: row.id as string,
@@ -63,7 +72,7 @@ export function mapPaymentMethod(row: Record<string, unknown>): PaymentMethod {
     brand: (row.brand as NullableString) ?? null,
     expiryMonth: toNumber(row.expiryMonth as NullableNumber) ?? null,
     expiryYear: toNumber(row.expiryYear as NullableNumber) ?? null,
-    metadata: (row.metadata as Record<string, unknown> | null) ?? null,
+    metadata: parseJson(row.metadata),
     user: undefined as never,
     createdAt: toDate(row.createdAt as NullableDate) ?? new Date(0),
     updatedAt: toDate(row.updatedAt as NullableDate) ?? new Date(0),
@@ -84,7 +93,7 @@ export function mapPayment(row: Record<string, unknown>): Payment {
     status: row.status as PaymentStatus,
     paymentMethodId: (row.paymentMethodId as NullableString) ?? null,
     idempotencyKey: row.idempotencyKey as string,
-    metadata: (row.metadata as Record<string, unknown> | null) ?? null,
+    metadata: parseJson(row.metadata),
     user: undefined as never,
     createdAt: toDate(row.createdAt as NullableDate) ?? new Date(0),
     updatedAt: toDate(row.updatedAt as NullableDate) ?? new Date(0),

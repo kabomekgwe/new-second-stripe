@@ -1,14 +1,14 @@
 import { Injectable, Logger } from '@nestjs/common';
 import Stripe from 'stripe';
 import { PaymentStatus } from '@stripe-app/shared';
-import { PostgresService } from '../../database/postgres.service';
+import { OracleService } from '../../database/oracle.service';
 
 @Injectable()
 export class CheckoutSessionHandler {
   private readonly logger = new Logger(CheckoutSessionHandler.name);
 
   constructor(
-    private readonly database: PostgresService,
+    private readonly database: OracleService,
   ) {}
 
   async handleCompleted(event: Stripe.Event): Promise<void> {
@@ -44,7 +44,7 @@ export class CheckoutSessionHandler {
     status: PaymentStatus | null,
   ): Promise<void> {
     const paymentResult = await this.database.query<{ id: string }>(
-      'SELECT id FROM payments WHERE "stripeCheckoutSessionId" = $1 LIMIT 1',
+      'SELECT id FROM payments WHERE "stripeCheckoutSessionId" = :1 FETCH FIRST 1 ROWS ONLY',
       [session.id],
     );
     const payment = paymentResult.rows[0];
@@ -62,16 +62,14 @@ export class CheckoutSessionHandler {
         : session.payment_intent?.id ?? null;
 
     await this.database.query(
-      `
-        UPDATE payments
-        SET
-          status = COALESCE($2, status),
-          "stripePaymentIntentId" = $3,
-          "amountUserCurrency" = $4,
-          "userCurrency" = $5,
-          "updatedAt" = now()
-        WHERE id = $1
-      `,
+      `UPDATE payments
+       SET
+         status = COALESCE(:2, status),
+         "stripePaymentIntentId" = :3,
+         "amountUserCurrency" = :4,
+         "userCurrency" = :5,
+         "updatedAt" = SYSTIMESTAMP
+       WHERE id = :1`,
       [
         payment.id,
         status,

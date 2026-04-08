@@ -1,35 +1,37 @@
 import { Injectable } from '@nestjs/common';
 import { Payment } from '@stripe-app/shared';
 import { randomUUID } from 'crypto';
-import { PostgresService } from '../database/postgres.service';
+import { OracleService } from '../database/oracle.service';
 import { mapPayment } from '../database/sql-mappers';
 
 @Injectable()
 export class PaymentsSqlService {
-  constructor(private readonly database: PostgresService) {}
+  constructor(private readonly database: OracleService) {}
 
   async create(
     data: Omit<Payment, 'id' | 'createdAt' | 'updatedAt' | 'user'>,
   ): Promise<Payment> {
-    const result = await this.database.query(
-      `INSERT INTO payments (
-        id,
-        "userId",
-        "stripePaymentIntentId",
-        "stripeCheckoutSessionId",
-        "amountGbp",
-        "amountUserCurrency",
-        "userCurrency",
-        "fxQuoteId",
-        status,
-        "paymentMethodId",
-        "idempotencyKey",
-        metadata
-      ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)
-      ON CONFLICT ("idempotencyKey") DO NOTHING
-      RETURNING *`,
+    const newId = randomUUID();
+    await this.database.query(
+      `MERGE INTO "payments" t
+       USING (SELECT :11 AS "idempotencyKey" FROM DUAL) s
+       ON (t."idempotencyKey" = s."idempotencyKey")
+       WHEN NOT MATCHED THEN INSERT (
+         id,
+         "userId",
+         "stripePaymentIntentId",
+         "stripeCheckoutSessionId",
+         "amountGbp",
+         "amountUserCurrency",
+         "userCurrency",
+         "fxQuoteId",
+         status,
+         "paymentMethodId",
+         "idempotencyKey",
+         metadata
+       ) VALUES (:1,:2,:3,:4,:5,:6,:7,:8,:9,:10,:11,:12)`,
       [
-        randomUUID(),
+        newId,
         data.userId,
         data.stripePaymentIntentId ?? null,
         data.stripeCheckoutSessionId ?? null,
@@ -40,25 +42,21 @@ export class PaymentsSqlService {
         data.status,
         data.paymentMethodId ?? null,
         data.idempotencyKey,
-        data.metadata ?? null,
+        data.metadata ? JSON.stringify(data.metadata) : null,
       ],
     );
 
-    // If conflict hit (duplicate idempotencyKey), fetch the existing record
-    if (result.rows.length === 0) {
-      const existing = await this.database.query(
-        'SELECT * FROM payments WHERE "idempotencyKey" = $1 LIMIT 1',
-        [data.idempotencyKey],
-      );
-      return mapPayment(existing.rows[0]);
-    }
-
+    // Fetch the row (either newly inserted or existing from conflict)
+    const result = await this.database.query(
+      'SELECT * FROM payments WHERE "idempotencyKey" = :1 FETCH FIRST 1 ROWS ONLY',
+      [data.idempotencyKey],
+    );
     return mapPayment(result.rows[0]);
   }
 
   async findByUserId(userId: string): Promise<Payment[]> {
     const result = await this.database.query(
-      'SELECT * FROM payments WHERE "userId" = $1 ORDER BY "createdAt" DESC',
+      'SELECT * FROM payments WHERE "userId" = :1 ORDER BY "createdAt" DESC',
       [userId],
     );
     return result.rows.map(mapPayment);
@@ -66,7 +64,7 @@ export class PaymentsSqlService {
 
   async findById(id: string, userId: string): Promise<Payment | null> {
     const result = await this.database.query(
-      'SELECT * FROM payments WHERE id = $1 AND "userId" = $2 LIMIT 1',
+      'SELECT * FROM payments WHERE id = :1 AND "userId" = :2 FETCH FIRST 1 ROWS ONLY',
       [id, userId],
     );
     return result.rows[0] ? mapPayment(result.rows[0]) : null;

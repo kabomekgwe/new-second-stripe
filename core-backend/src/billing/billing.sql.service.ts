@@ -6,18 +6,20 @@ import {
   UsageCharge,
   User,
 } from '@stripe-app/shared';
-import { PoolClient } from 'pg';
+import type { DbConnection } from '../database/oracle.service';
 import { randomUUID } from 'crypto';
-import { PostgresService } from '../database/postgres.service';
+import { OracleService } from '../database/oracle.service';
 import {
   mapBillingSubscription,
   mapUsageCharge,
   mapUser,
 } from '../database/sql-mappers';
 
+const boolToNum = (v?: boolean): number => v ? 1 : 0;
+
 @Injectable()
 export class BillingSqlService {
-  constructor(private readonly database: PostgresService) {}
+  constructor(private readonly database: OracleService) {}
 
   async findBillableUsers(): Promise<User[]> {
     const result = await this.database.query(
@@ -33,7 +35,7 @@ export class BillingSqlService {
     idempotencyKey: string,
   ): Promise<UsageCharge | null> {
     const result = await this.database.query(
-      'SELECT * FROM usage_charges WHERE "idempotencyKey" = $1 LIMIT 1',
+      'SELECT * FROM usage_charges WHERE "idempotencyKey" = :1 FETCH FIRST 1 ROWS ONLY',
       [idempotencyKey],
     );
     return result.rows[0] ? mapUsageCharge(result.rows[0]) : null;
@@ -41,7 +43,7 @@ export class BillingSqlService {
 
   async listUsageChargesByUserId(userId: string): Promise<UsageCharge[]> {
     const result = await this.database.query(
-      'SELECT * FROM usage_charges WHERE "userId" = $1 ORDER BY "billingPeriodStart" DESC',
+      'SELECT * FROM usage_charges WHERE "userId" = :1 ORDER BY "billingPeriodStart" DESC',
       [userId],
     );
     return result.rows.map(mapUsageCharge);
@@ -50,35 +52,28 @@ export class BillingSqlService {
   async upsertUsageCharge(
     data: Omit<UsageCharge, 'id' | 'createdAt' | 'updatedAt' | 'user'>,
   ): Promise<UsageCharge> {
-    const result = await this.database.query(
-      `INSERT INTO usage_charges (
-        id,
-        "userId",
-        "stripeInvoiceId",
-        "stripeSubscriptionId",
-        "stripeSubscriptionItemId",
-        "stripePaymentIntentId",
-        "amountGbp",
-        description,
-        "billingPeriodStart",
-        "billingPeriodEnd",
-        status,
-        "idempotencyKey",
-        "usageReportedAt"
-      ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)
-      ON CONFLICT ("idempotencyKey") DO UPDATE SET
-        "stripeInvoiceId" = EXCLUDED."stripeInvoiceId",
-        "stripeSubscriptionId" = EXCLUDED."stripeSubscriptionId",
-        "stripeSubscriptionItemId" = EXCLUDED."stripeSubscriptionItemId",
-        "stripePaymentIntentId" = EXCLUDED."stripePaymentIntentId",
-        "amountGbp" = EXCLUDED."amountGbp",
-        description = EXCLUDED.description,
-        "billingPeriodStart" = EXCLUDED."billingPeriodStart",
-        "billingPeriodEnd" = EXCLUDED."billingPeriodEnd",
-        status = EXCLUDED.status,
-        "usageReportedAt" = EXCLUDED."usageReportedAt",
-        "updatedAt" = NOW()
-      RETURNING *`,
+    await this.database.query(
+      `MERGE INTO "usage_charges" t
+       USING (SELECT :12 AS "idempotencyKey" FROM DUAL) s
+       ON (t."idempotencyKey" = s."idempotencyKey")
+       WHEN MATCHED THEN UPDATE SET
+         "stripeInvoiceId" = :3,
+         "stripeSubscriptionId" = :4,
+         "stripeSubscriptionItemId" = :5,
+         "stripePaymentIntentId" = :6,
+         "amountGbp" = :7,
+         description = :8,
+         "billingPeriodStart" = :9,
+         "billingPeriodEnd" = :10,
+         status = :11,
+         "usageReportedAt" = :13,
+         "updatedAt" = SYSTIMESTAMP
+       WHEN NOT MATCHED THEN INSERT (
+         id, "userId", "stripeInvoiceId", "stripeSubscriptionId",
+         "stripeSubscriptionItemId", "stripePaymentIntentId", "amountGbp",
+         description, "billingPeriodStart", "billingPeriodEnd", status,
+         "idempotencyKey", "usageReportedAt"
+       ) VALUES (:1,:2,:3,:4,:5,:6,:7,:8,:9,:10,:11,:12,:13)`,
       [
         randomUUID(),
         data.userId,
@@ -96,6 +91,10 @@ export class BillingSqlService {
       ],
     );
 
+    const result = await this.database.query(
+      'SELECT * FROM usage_charges WHERE "idempotencyKey" = :1',
+      [data.idempotencyKey],
+    );
     return mapUsageCharge(result.rows[0]);
   }
 
@@ -103,7 +102,7 @@ export class BillingSqlService {
     userId: string,
   ): Promise<BillingSubscription | null> {
     const result = await this.database.query(
-      'SELECT * FROM billing_subscriptions WHERE "userId" = $1 ORDER BY "updatedAt" DESC LIMIT 1',
+      'SELECT * FROM billing_subscriptions WHERE "userId" = :1 ORDER BY "updatedAt" DESC FETCH FIRST 1 ROWS ONLY',
       [userId],
     );
     return result.rows[0] ? mapBillingSubscription(result.rows[0]) : null;
@@ -113,7 +112,7 @@ export class BillingSqlService {
     stripeSubscriptionId: string,
   ): Promise<BillingSubscription | null> {
     const result = await this.database.query(
-      'SELECT * FROM billing_subscriptions WHERE "stripeSubscriptionId" = $1 LIMIT 1',
+      'SELECT * FROM billing_subscriptions WHERE "stripeSubscriptionId" = :1 FETCH FIRST 1 ROWS ONLY',
       [stripeSubscriptionId],
     );
     return result.rows[0] ? mapBillingSubscription(result.rows[0]) : null;
@@ -122,30 +121,25 @@ export class BillingSqlService {
   async upsertBillingSubscription(
     data: Omit<BillingSubscription, 'id' | 'createdAt' | 'updatedAt' | 'user'>,
   ): Promise<BillingSubscription> {
-    const result = await this.database.query(
-      `INSERT INTO billing_subscriptions (
-        id,
-        "userId",
-        "stripeSubscriptionId",
-        "stripeSubscriptionItemId",
-        "stripePriceId",
-        status,
-        "currentPeriodStart",
-        "currentPeriodEnd",
-        "cancelAtPeriodEnd",
-        "canceledAt"
-      ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)
-      ON CONFLICT ("stripeSubscriptionId") DO UPDATE SET
-        "userId" = EXCLUDED."userId",
-        "stripeSubscriptionItemId" = EXCLUDED."stripeSubscriptionItemId",
-        "stripePriceId" = EXCLUDED."stripePriceId",
-        status = EXCLUDED.status,
-        "currentPeriodStart" = EXCLUDED."currentPeriodStart",
-        "currentPeriodEnd" = EXCLUDED."currentPeriodEnd",
-        "cancelAtPeriodEnd" = EXCLUDED."cancelAtPeriodEnd",
-        "canceledAt" = EXCLUDED."canceledAt",
-        "updatedAt" = NOW()
-      RETURNING *`,
+    await this.database.query(
+      `MERGE INTO "billing_subscriptions" t
+       USING (SELECT :3 AS "stripeSubscriptionId" FROM DUAL) s
+       ON (t."stripeSubscriptionId" = s."stripeSubscriptionId")
+       WHEN MATCHED THEN UPDATE SET
+         "userId" = :2,
+         "stripeSubscriptionItemId" = :4,
+         "stripePriceId" = :5,
+         status = :6,
+         "currentPeriodStart" = :7,
+         "currentPeriodEnd" = :8,
+         "cancelAtPeriodEnd" = :9,
+         "canceledAt" = :10,
+         "updatedAt" = SYSTIMESTAMP
+       WHEN NOT MATCHED THEN INSERT (
+         id, "userId", "stripeSubscriptionId", "stripeSubscriptionItemId",
+         "stripePriceId", status, "currentPeriodStart", "currentPeriodEnd",
+         "cancelAtPeriodEnd", "canceledAt"
+       ) VALUES (:1,:2,:3,:4,:5,:6,:7,:8,:9,:10)`,
       [
         randomUUID(),
         data.userId,
@@ -155,16 +149,20 @@ export class BillingSqlService {
         data.status,
         data.currentPeriodStart ?? null,
         data.currentPeriodEnd ?? null,
-        data.cancelAtPeriodEnd,
+        boolToNum(data.cancelAtPeriodEnd),
         data.canceledAt ?? null,
       ],
     );
 
+    const result = await this.database.query(
+      'SELECT * FROM billing_subscriptions WHERE "stripeSubscriptionId" = :1',
+      [data.stripeSubscriptionId],
+    );
     return mapBillingSubscription(result.rows[0]);
   }
 
   async transaction<T>(
-    callback: (client: PoolClient) => Promise<T>,
+    callback: (connection: DbConnection) => Promise<T>,
   ): Promise<T> {
     return this.database.transaction(callback);
   }
@@ -173,7 +171,7 @@ export class BillingSqlService {
     stripeSubscriptionId: string,
   ): Promise<void> {
     await this.database.query(
-      'DELETE FROM billing_subscriptions WHERE "stripeSubscriptionId" = $1',
+      'DELETE FROM billing_subscriptions WHERE "stripeSubscriptionId" = :1',
       [stripeSubscriptionId],
     );
   }

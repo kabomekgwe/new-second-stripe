@@ -1,16 +1,20 @@
-import { StartedPostgreSqlContainer, PostgreSqlContainer } from '@testcontainers/postgresql';
+import { GenericContainer, StartedTestContainer } from 'testcontainers';
 import { StartedRedisContainer, RedisContainer } from '@testcontainers/redis';
 
 export class TestContainers {
-  public postgres: StartedPostgreSqlContainer;
+  public oracle: StartedTestContainer;
   public redis: StartedRedisContainer;
 
   async setup() {
-    // Start PostgreSQL
-    this.postgres = await new PostgreSqlContainer('postgres:16-alpine')
-      .withDatabase('stripe_app_test')
-      .withUsername('postgres')
-      .withPassword('postgres')
+    // Start Oracle
+    this.oracle = await new GenericContainer('gvenzl/oracle-free:23-slim-faststart')
+      .withEnvironment({
+        ORACLE_PASSWORD: 'oracle',
+        APP_USER: 'app_user',
+        APP_USER_PASSWORD: 'app_password',
+      })
+      .withExposedPorts(1521)
+      .withStartupTimeout(120_000)
       .start();
 
     // Start Redis
@@ -19,12 +23,16 @@ export class TestContainers {
   }
 
   async teardown() {
-    await this.postgres?.stop();
+    await this.oracle?.stop();
     await this.redis?.stop();
   }
 
-  getPostgresUrl(): string {
-    return this.postgres.getConnectionUri();
+  getOracleHost(): string {
+    return this.oracle.getHost();
+  }
+
+  getOraclePort(): number {
+    return this.oracle.getMappedPort(1521);
   }
 
   getRedisUrl(): string {

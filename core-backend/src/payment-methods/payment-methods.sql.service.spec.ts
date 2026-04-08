@@ -1,64 +1,85 @@
 import { PaymentMethodsSqlService } from './payment-methods.sql.service';
-import { PostgresService } from '../database/postgres.service';
-import { Pool } from 'pg';
+import { OracleService } from '../database/oracle.service';
+import oracledb from 'oracledb';
 import { randomUUID } from 'crypto';
 
 describe('PaymentMethodsSqlService', () => {
   let service: PaymentMethodsSqlService;
-  let pool: Pool;
+  let pool: oracledb.Pool;
   let testUserId: string;
 
+  /** Helper: run a query against the raw pool (for test setup/teardown). */
+  const rawQuery = async <T = Record<string, unknown>>(
+    sql: string,
+    params: unknown[] = [],
+  ): Promise<{ rows: T[] }> => {
+    const conn = await pool.getConnection();
+    try {
+      const result = await conn.execute(sql, params, {
+        outFormat: oracledb.OUT_FORMAT_OBJECT,
+        autoCommit: true,
+      });
+      return { rows: (result.rows ?? []) as T[] };
+    } finally {
+      await conn.close();
+    }
+  };
+
   beforeAll(async () => {
-    pool = new Pool({
-      host: 'localhost',
-      port: 5481,
-      user: 'postgres',
-      password: 'postgres',
-      database: 'stripe_app',
+    pool = await oracledb.createPool({
+      user: 'app_user',
+      password: 'app_password',
+      connectString: 'localhost:1521/FREEPDB1',
     });
 
     const database = {
-      query: (text: string, params?: any[], client?: any) => {
-        if (client) {
-          return client.query(text, params);
+      query: (text: string, params?: any[], connection?: any) => {
+        if (connection) {
+          return connection
+            .execute(text, params ?? [], {
+              outFormat: oracledb.OUT_FORMAT_OBJECT,
+              autoCommit: false,
+            })
+            .then((r: any) => ({ rows: r.rows ?? [] }));
         }
-        return pool.query(text, params);
+        return rawQuery(text, params);
       },
-      transaction: async <T>(callback: (client: any) => Promise<T>): Promise<T> => {
-        const client = await pool.connect();
+      transaction: async <T>(callback: (connection: any) => Promise<T>): Promise<T> => {
+        const connection = await pool.getConnection();
         try {
-          await client.query('BEGIN');
-          const result = await callback(client);
-          await client.query('COMMIT');
+          const result = await callback(connection);
+          await connection.commit();
           return result;
         } catch (error) {
-          await client.query('ROLLBACK');
+          await connection.rollback();
           throw error;
         } finally {
-          client.release();
+          await connection.close();
         }
       },
-    } as PostgresService;
+    } as OracleService;
 
     service = new PaymentMethodsSqlService(database);
 
     testUserId = randomUUID();
-    await pool.query(
-      `INSERT INTO users (id, email, password, name, country, currency)
-       VALUES ($1, $2, $3, $4, $5, $6)
-       ON CONFLICT (id) DO NOTHING`,
+    await rawQuery(
+      `MERGE INTO "users" dst
+       USING (SELECT :1 AS "id" FROM dual) src ON (dst."id" = src."id")
+       WHEN NOT MATCHED THEN
+         INSERT ("id", "email", "password", "name", "country", "currency")
+         VALUES (:1, :2, :3, :4, :5, :6)`,
       [testUserId, `test-${testUserId}@example.com`, 'hashed', 'Test User', 'GB', 'GBP'],
     );
   });
 
   afterAll(async () => {
-    await pool.query('DELETE FROM payment_methods');
-    await pool.query(`DELETE FROM users WHERE email LIKE 'test-%@example.com'`);
-    await pool.end();
+    await rawQuery('DELETE FROM "payment_methods"');
+    await rawQuery(`DELETE FROM "users" WHERE "email" LIKE 'test-%@example.com'`);
+    await pool.close(0);
   });
 
   beforeEach(async () => {
-    await pool.query('DELETE FROM payment_methods');
+    await rawQuery('DELETE FROM "payment_methods"');
   });
 
   describe('upsertFromStripe', () => {
@@ -116,8 +137,8 @@ describe('PaymentMethodsSqlService', () => {
       expect(updated.expiryYear).toBe(2026);
       expect(updated.isDefault).toBe(true);
 
-      const all = await pool.query(
-        'SELECT * FROM payment_methods WHERE "stripePaymentMethodId" = $1',
+      const all = await rawQuery(
+        'SELECT * FROM "payment_methods" WHERE "stripePaymentMethodId" = :1',
         ['pm_stripe_conflict'],
       );
       expect(all.rows.length).toBe(1);
@@ -138,7 +159,7 @@ describe('PaymentMethodsSqlService', () => {
       expect(result.metadata).toBeNull();
     });
 
-    it('stores metadata as jsonb', async () => {
+    it('stores metadata as json', async () => {
       const metadata = { cardholder: 'John Doe', nickname: 'Work Card' };
       const result = await service.upsertFromStripe({
         userId: testUserId,
@@ -282,10 +303,12 @@ describe('PaymentMethodsSqlService', () => {
 
     it('filters by userId when provided', async () => {
       const otherUserId = randomUUID();
-      await pool.query(
-        `INSERT INTO users (id, email, password, name, country, currency)
-         VALUES ($1, $2, $3, $4, $5, $6)
-         ON CONFLICT (id) DO NOTHING`,
+      await rawQuery(
+        `MERGE INTO "users" dst
+         USING (SELECT :1 AS "id" FROM dual) src ON (dst."id" = src."id")
+         WHEN NOT MATCHED THEN
+           INSERT ("id", "email", "password", "name", "country", "currency")
+           VALUES (:1, :2, :3, :4, :5, :6)`,
         [otherUserId, `other-${otherUserId}@example.com`, 'hashed', 'Other', 'GB', 'GBP'],
       );
 
@@ -352,10 +375,12 @@ describe('PaymentMethodsSqlService', () => {
 
     it('returns empty array for user with no payment methods', async () => {
       const lonelyUserId = randomUUID();
-      await pool.query(
-        `INSERT INTO users (id, email, password, name, country, currency)
-         VALUES ($1, $2, $3, $4, $5, $6)
-         ON CONFLICT (id) DO NOTHING`,
+      await rawQuery(
+        `MERGE INTO "users" dst
+         USING (SELECT :1 AS "id" FROM dual) src ON (dst."id" = src."id")
+         WHEN NOT MATCHED THEN
+           INSERT ("id", "email", "password", "name", "country", "currency")
+           VALUES (:1, :2, :3, :4, :5, :6)`,
         [lonelyUserId, `lonely-${lonelyUserId}@example.com`, 'hashed', 'Lonely', 'GB', 'GBP'],
       );
 
@@ -421,12 +446,12 @@ describe('PaymentMethodsSqlService', () => {
         isDefault: false,
       });
 
-      const result = await pool.query(
-        'SELECT COUNT(*) FROM payment_methods WHERE "stripePaymentMethodId" = $1',
+      const result = await rawQuery<{ CNT: number }>(
+        'SELECT COUNT(*) AS "CNT" FROM "payment_methods" WHERE "stripePaymentMethodId" = :1',
         ['pm_unique_test'],
       );
 
-      expect(parseInt(result.rows[0].count)).toBe(1);
+      expect(Number(result.rows[0].CNT)).toBe(1);
     });
 
     it('validates foreign key constraint on userId', async () => {

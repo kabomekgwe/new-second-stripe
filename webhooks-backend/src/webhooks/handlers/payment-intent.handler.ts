@@ -4,7 +4,7 @@ import {
   PaymentStatus,
   ChargeStatus,
 } from '@stripe-app/shared';
-import { PostgresService } from '../../database/postgres.service';
+import { OracleService } from '../../database/oracle.service';
 
 @Injectable()
 export class PaymentIntentHandler {
@@ -12,7 +12,7 @@ export class PaymentIntentHandler {
   private static readonly USER_PAYMENT_TYPE = 'user_payment';
 
   constructor(
-    private readonly database: PostgresService,
+    private readonly database: OracleService,
   ) {}
 
   async handleSucceeded(event: Stripe.Event): Promise<void> {
@@ -57,10 +57,10 @@ export class PaymentIntentHandler {
     await this.database.query(
       `UPDATE payments
        SET
-         status = $2,
-         "stripePaymentIntentId" = COALESCE("stripePaymentIntentId", $3),
-         "updatedAt" = now()
-       WHERE id = $1`,
+         status = :2,
+         "stripePaymentIntentId" = COALESCE("stripePaymentIntentId", :3),
+         "updatedAt" = SYSTIMESTAMP
+       WHERE id = :1`,
       [payment.id, status, paymentIntent.id],
     );
     this.logger.log(
@@ -72,7 +72,7 @@ export class PaymentIntentHandler {
     paymentIntent: Stripe.PaymentIntent,
   ): Promise<{ id: string } | null> {
     const paymentResult = await this.database.query<{ id: string }>(
-      'SELECT id FROM payments WHERE "stripePaymentIntentId" = $1 LIMIT 1',
+      'SELECT id FROM payments WHERE "stripePaymentIntentId" = :1 FETCH FIRST 1 ROWS ONLY',
       [paymentIntent.id],
     );
     const payment = paymentResult.rows[0];
@@ -90,12 +90,12 @@ export class PaymentIntentHandler {
     const fallbackResult = await this.database.query<{ id: string }>(
       `SELECT id
        FROM payments
-       WHERE "userId" = $1
-         AND "idempotencyKey" = $2
-         AND status = $3
+       WHERE "userId" = :1
+         AND "idempotencyKey" = :2
+         AND status = :3
          AND "stripePaymentIntentId" IS NULL
        ORDER BY "createdAt" DESC
-       LIMIT 1`,
+       FETCH FIRST 1 ROWS ONLY`,
       [metadataUserId, metadataIdempotencyKey, PaymentStatus.PENDING],
     );
 
@@ -107,7 +107,7 @@ export class PaymentIntentHandler {
     status: ChargeStatus,
   ): Promise<void> {
     const usageChargeResult = await this.database.query<{ id: string }>(
-      'SELECT id FROM usage_charges WHERE "stripePaymentIntentId" = $1 LIMIT 1',
+      'SELECT id FROM usage_charges WHERE "stripePaymentIntentId" = :1 FETCH FIRST 1 ROWS ONLY',
       [paymentIntent.id],
     );
     const usageCharge = usageChargeResult.rows[0];
@@ -120,7 +120,7 @@ export class PaymentIntentHandler {
     }
 
     await this.database.query(
-      'UPDATE usage_charges SET status = $2, "updatedAt" = now() WHERE id = $1',
+      'UPDATE usage_charges SET status = :2, "updatedAt" = SYSTIMESTAMP WHERE id = :1',
       [usageCharge.id, status],
     );
     this.logger.log(

@@ -5,7 +5,7 @@ import {
   WebhookEventStatus,
 } from '@stripe-app/shared';
 import { StripeService } from '../stripe/stripe.service';
-import { PostgresService } from '../database/postgres.service';
+import { OracleService } from '../database/oracle.service';
 import { SetupIntentHandler } from './handlers/setup-intent.handler';
 import { PaymentMethodHandler } from './handlers/payment-method.handler';
 import { PaymentIntentHandler } from './handlers/payment-intent.handler';
@@ -19,7 +19,7 @@ export class WebhooksService {
   private readonly webhookSecret: string;
 
   constructor(
-    private readonly database: PostgresService,
+    private readonly database: OracleService,
     private readonly stripeService: StripeService,
     private readonly configService: ConfigService,
     private readonly setupIntentHandler: SetupIntentHandler,
@@ -48,7 +48,7 @@ export class WebhooksService {
       eventId: string;
       status: WebhookEventStatus;
     }>(
-      'SELECT "eventId", status FROM webhook_events WHERE "eventId" = $1 LIMIT 1',
+      'SELECT "eventId", status FROM webhook_events WHERE "eventId" = :1 FETCH FIRST 1 ROWS ONLY',
       [event.id],
     );
     const existingEvent = existingEventResult.rows[0] ?? null;
@@ -64,21 +64,14 @@ export class WebhooksService {
     }
 
     await this.database.query(
-      `
-        INSERT INTO webhook_events (
-          "eventId",
-          type,
-          status,
-          "processedAt",
-          "lastError"
-        ) VALUES ($1, $2, $3, $4, $5)
-        ON CONFLICT ("eventId") DO UPDATE SET
-          type = EXCLUDED.type,
-          status = EXCLUDED.status,
-          "processedAt" = EXCLUDED."processedAt",
-          "lastError" = EXCLUDED."lastError",
-          "updatedAt" = now()
-      `,
+      `MERGE INTO "webhook_events" t
+       USING (SELECT :1 AS "eventId" FROM DUAL) s
+       ON (t."eventId" = s."eventId")
+       WHEN MATCHED THEN UPDATE SET
+         "type" = :2, "status" = :3, "processedAt" = :4, "lastError" = :5, "updatedAt" = SYSTIMESTAMP
+       WHEN NOT MATCHED THEN INSERT (
+         "eventId", "type", "status", "processedAt", "lastError"
+       ) VALUES (:1, :2, :3, :4, :5)`,
       [event.id, event.type, WebhookEventStatus.PROCESSING, null, null],
     );
 
@@ -151,11 +144,9 @@ export class WebhooksService {
       }
 
       await this.database.query(
-        `
-          UPDATE webhook_events
-          SET status = $2, "processedAt" = $3, "lastError" = NULL, "updatedAt" = now()
-          WHERE "eventId" = $1
-        `,
+        `UPDATE webhook_events
+         SET status = :2, "processedAt" = :3, "lastError" = NULL, "updatedAt" = SYSTIMESTAMP
+         WHERE "eventId" = :1`,
         [event.id, WebhookEventStatus.PROCESSED, new Date()],
       );
     } catch (error) {
@@ -163,11 +154,9 @@ export class WebhooksService {
         error instanceof Error ? error.message : 'Unknown error';
 
       await this.database.query(
-        `
-          UPDATE webhook_events
-          SET status = $2, "lastError" = $3, "updatedAt" = now()
-          WHERE "eventId" = $1
-        `,
+        `UPDATE webhook_events
+         SET status = :2, "lastError" = :3, "updatedAt" = SYSTIMESTAMP
+         WHERE "eventId" = :1`,
         [event.id, WebhookEventStatus.FAILED, errorMessage],
       );
 

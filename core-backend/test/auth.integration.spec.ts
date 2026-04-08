@@ -20,11 +20,11 @@ describe('Auth Integration Tests', () => {
       .useValue({
         get: (key: string) => {
           const config = {
-            DB_HOST: testContainers.postgres.getHost(),
-            DB_PORT: testContainers.postgres.getPort(),
-            DB_NAME: 'stripe_app_test',
-            DB_USER: 'postgres',
-            DB_PASSWORD: 'postgres',
+            DB_HOST: testContainers.getOracleHost(),
+            DB_PORT: testContainers.getOraclePort(),
+            DB_SERVICE_NAME: 'FREEPDB1',
+            DB_USER: 'app_user',
+            DB_PASSWORD: 'app_password',
             REDIS_URL: testContainers.getRedisUrl(),
             SESSION_SECRET: 'test-secret-key',
             FRONTEND_URL: 'http://localhost:3000',

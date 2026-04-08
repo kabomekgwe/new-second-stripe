@@ -1,6 +1,6 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { WebhooksService } from '../webhooks.service';
-import { PostgresService } from '../../database/postgres.service';
+import { OracleService } from '../../database/oracle.service';
 import { StripeService } from '../../stripe/stripe.service';
 import { ConfigService } from '@nestjs/config';
 import { PaymentIntentHandler } from './payment-intent.handler';
@@ -13,7 +13,7 @@ import { WebhookEventStatus } from '@stripe-app/shared';
 
 describe('Webhook Failure and Retry Logic', () => {
   let service: WebhooksService;
-  let database: jest.Mocked<PostgresService>;
+  let database: jest.Mocked<OracleService>;
   let paymentIntentHandler: jest.Mocked<PaymentIntentHandler>;
 
   const mockEvent = {
@@ -36,7 +36,7 @@ describe('Webhook Failure and Retry Logic', () => {
       providers: [
         WebhooksService,
         {
-          provide: PostgresService,
+          provide: OracleService,
           useValue: {
             query: jest.fn(),
             transaction: jest.fn(),
@@ -104,7 +104,7 @@ describe('Webhook Failure and Retry Logic', () => {
     }).compile();
 
     service = module.get<WebhooksService>(WebhooksService);
-    database = module.get(PostgresService);
+    database = module.get(OracleService);
     paymentIntentHandler = module.get(PaymentIntentHandler);
   });
 

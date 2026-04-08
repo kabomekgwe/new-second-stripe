@@ -73,7 +73,7 @@ describe('PaymentMethodHandler', () => {
       );
 
       expect(database.query).toHaveBeenCalledWith(
-        expect.stringContaining('INSERT INTO payment_methods'),
+        expect.stringContaining('MERGE INTO "payment_methods"'),
         expect.arrayContaining(['user_1', 'pm_visa', 'card', '4242', 'visa']),
       );
     });
@@ -104,7 +104,7 @@ describe('PaymentMethodHandler', () => {
       );
 
       const insertCall = database.query.mock.calls.find((call) =>
-        call[0].includes('INSERT INTO payment_methods'),
+        call[0].includes('MERGE INTO "payment_methods"'),
       );
       expect(insertCall).toBeDefined();
     });
@@ -150,10 +150,10 @@ describe('PaymentMethodHandler', () => {
       expect(database.transaction).toHaveBeenCalled();
       
       const setIsDefaultCall = database.query.mock.calls.find(
-        (call) => typeof call[0] === 'string' && call[0].includes('"isDefault" = true'),
+        (call) => typeof call[0] === 'string' && call[0].includes('"isDefault" = :3'),
       );
       expect(setIsDefaultCall).toBeDefined();
-      expect(setIsDefaultCall[1]).toEqual(['user_1', 'pm_first']);
+      expect(setIsDefaultCall[1]).toEqual(['user_1', 'pm_first', 1]);
     });
 
     it('does not set default when user already has one', async () => {
@@ -195,7 +195,7 @@ describe('PaymentMethodHandler', () => {
       );
 
       const insertCall = database.query.mock.calls.find((call) =>
-        call[0].includes('INSERT INTO payment_methods'),
+        call[0].includes('MERGE INTO "payment_methods"'),
       );
       expect(insertCall[1]).toContain('sepa_debit');
     });
@@ -221,7 +221,7 @@ describe('PaymentMethodHandler', () => {
       } as Stripe.Event);
 
       expect(database.query).toHaveBeenCalledWith(
-        'DELETE FROM payment_methods WHERE id = $1',
+        'DELETE FROM payment_methods WHERE id = :1',
         ['pm_1'],
       );
       expect(database.query).toHaveBeenCalledWith(

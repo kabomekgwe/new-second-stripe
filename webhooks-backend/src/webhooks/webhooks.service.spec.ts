@@ -18,7 +18,7 @@ describe('WebhooksService', () => {
         return { rows: event ? [event] : [] };
       }
 
-      if (text.includes('INSERT INTO webhook_events')) {
+      if (text.includes('MERGE INTO "webhook_events"')) {
         webhookEventStore.set(params[0] as string, {
           eventId: params[0] as string,
           status: params[2] as WebhookEventStatus,
@@ -26,7 +26,7 @@ describe('WebhooksService', () => {
         return { rows: [] };
       }
 
-      if (text.includes('SET status = $2')) {
+      if (text.includes('SET status = :2')) {
         const current = webhookEventStore.get(params[0] as string);
         if (current) {
           webhookEventStore.set(params[0] as string, {

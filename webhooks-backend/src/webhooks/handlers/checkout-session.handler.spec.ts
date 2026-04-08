@@ -42,7 +42,7 @@ describe('CheckoutSessionHandler', () => {
 
     expect(database.query).toHaveBeenNthCalledWith(
       1,
-      'SELECT id FROM payments WHERE "stripeCheckoutSessionId" = $1 LIMIT 1',
+      'SELECT id FROM payments WHERE "stripeCheckoutSessionId" = :1 FETCH FIRST 1 ROWS ONLY',
       ['cs_paid'],
     );
     expect(database.query).toHaveBeenNthCalledWith(

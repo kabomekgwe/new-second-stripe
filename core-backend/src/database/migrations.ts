@@ -7,125 +7,229 @@ export const SQL_MIGRATIONS: SqlMigration[] = [
   {
     id: '001_raw_sql_core_schema',
     sql: `
-      CREATE EXTENSION IF NOT EXISTS "pgcrypto";
+      BEGIN
+        -- Create users table
+        BEGIN
+          EXECUTE IMMEDIATE '
+            CREATE TABLE "users" (
+              "id" VARCHAR2(36) PRIMARY KEY,
+              "email" VARCHAR2(4000) NOT NULL UNIQUE,
+              "password" VARCHAR2(4000) NOT NULL,
+              "name" VARCHAR2(4000) NOT NULL,
+              "country" VARCHAR2(2) NOT NULL,
+              "currency" VARCHAR2(3) NOT NULL,
+              "stripeCustomerId" VARCHAR2(4000) UNIQUE,
+              "defaultPaymentMethodId" VARCHAR2(4000),
+              "monthlyManagementFee" NUMBER(12, 0),
+              "accountValue" NUMBER(18, 2),
+              "createdAt" TIMESTAMP WITH TIME ZONE DEFAULT SYSTIMESTAMP NOT NULL,
+              "updatedAt" TIMESTAMP WITH TIME ZONE DEFAULT SYSTIMESTAMP NOT NULL
+            )
+          ';
+        EXCEPTION
+          WHEN OTHERS THEN IF SQLCODE != -955 THEN RAISE; END IF;
+        END;
 
-      CREATE TABLE IF NOT EXISTS users (
-        id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-        email varchar NOT NULL UNIQUE,
-        password varchar NOT NULL,
-        name varchar NOT NULL,
-        country varchar(2) NOT NULL,
-        currency varchar(3) NOT NULL,
-        "stripeCustomerId" varchar UNIQUE,
-        "defaultPaymentMethodId" varchar,
-        "monthlyManagementFee" numeric(12, 0),
-        "accountValue" numeric(18, 2),
-        "createdAt" timestamptz NOT NULL DEFAULT now(),
-        "updatedAt" timestamptz NOT NULL DEFAULT now()
-      );
+        -- Create users_stripe_customer_id_idx index
+        BEGIN
+          EXECUTE IMMEDIATE 'CREATE INDEX "users_stripe_customer_id_idx" ON "users" ("stripeCustomerId")';
+        EXCEPTION
+          WHEN OTHERS THEN IF SQLCODE != -955 THEN RAISE; END IF;
+        END;
 
-      CREATE INDEX IF NOT EXISTS users_stripe_customer_id_idx
-        ON users ("stripeCustomerId");
+        -- Create payment_methods table
+        BEGIN
+          EXECUTE IMMEDIATE '
+            CREATE TABLE "payment_methods" (
+              "id" VARCHAR2(36) PRIMARY KEY,
+              "userId" VARCHAR2(36) NOT NULL REFERENCES "users"("id") ON DELETE CASCADE,
+              "stripePaymentMethodId" VARCHAR2(4000) NOT NULL UNIQUE,
+              "type" VARCHAR2(4000) NOT NULL,
+              "isDefault" NUMBER(1) DEFAULT 0 NOT NULL,
+              "last4" VARCHAR2(4),
+              "brand" VARCHAR2(4000),
+              "expiryMonth" NUMBER(10),
+              "expiryYear" NUMBER(10),
+              "metadata" CLOB,
+              "createdAt" TIMESTAMP WITH TIME ZONE DEFAULT SYSTIMESTAMP NOT NULL,
+              "updatedAt" TIMESTAMP WITH TIME ZONE DEFAULT SYSTIMESTAMP NOT NULL
+            )
+          ';
+        EXCEPTION
+          WHEN OTHERS THEN IF SQLCODE != -955 THEN RAISE; END IF;
+        END;
 
-      CREATE TABLE IF NOT EXISTS payment_methods (
-        id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-        "userId" uuid NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-        "stripePaymentMethodId" varchar NOT NULL UNIQUE,
-        type varchar NOT NULL,
-        "isDefault" boolean NOT NULL DEFAULT false,
-        last4 varchar(4),
-        brand varchar,
-        "expiryMonth" integer,
-        "expiryYear" integer,
-        metadata jsonb,
-        "createdAt" timestamptz NOT NULL DEFAULT now(),
-        "updatedAt" timestamptz NOT NULL DEFAULT now()
-      );
+        -- Create payment_methods_user_id_idx index
+        BEGIN
+          EXECUTE IMMEDIATE 'CREATE INDEX "payment_methods_user_id_idx" ON "payment_methods" ("userId")';
+        EXCEPTION
+          WHEN OTHERS THEN IF SQLCODE != -955 THEN RAISE; END IF;
+        END;
 
-      CREATE INDEX IF NOT EXISTS payment_methods_user_id_idx
-        ON payment_methods ("userId");
+        -- Create payments table
+        BEGIN
+          EXECUTE IMMEDIATE '
+            CREATE TABLE "payments" (
+              "id" VARCHAR2(36) PRIMARY KEY,
+              "userId" VARCHAR2(36) NOT NULL REFERENCES "users"("id") ON DELETE CASCADE,
+              "stripePaymentIntentId" VARCHAR2(4000) UNIQUE,
+              "stripeCheckoutSessionId" VARCHAR2(4000) UNIQUE,
+              "amountGbp" NUMBER(10) NOT NULL,
+              "amountUserCurrency" NUMBER(10),
+              "userCurrency" VARCHAR2(3),
+              "fxQuoteId" VARCHAR2(4000),
+              "status" VARCHAR2(4000) DEFAULT ''pending'' NOT NULL,
+              "paymentMethodId" VARCHAR2(4000),
+              "idempotencyKey" VARCHAR2(4000) NOT NULL UNIQUE,
+              "metadata" CLOB,
+              "createdAt" TIMESTAMP WITH TIME ZONE DEFAULT SYSTIMESTAMP NOT NULL,
+              "updatedAt" TIMESTAMP WITH TIME ZONE DEFAULT SYSTIMESTAMP NOT NULL
+            )
+          ';
+        EXCEPTION
+          WHEN OTHERS THEN IF SQLCODE != -955 THEN RAISE; END IF;
+        END;
 
-      CREATE TABLE IF NOT EXISTS payments (
-        id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-        "userId" uuid NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-        "stripePaymentIntentId" varchar UNIQUE,
-        "stripeCheckoutSessionId" varchar UNIQUE,
-        "amountGbp" integer NOT NULL,
-        "amountUserCurrency" integer,
-        "userCurrency" varchar(3),
-        "fxQuoteId" varchar,
-        status varchar NOT NULL DEFAULT 'pending',
-        "paymentMethodId" varchar,
-        "idempotencyKey" varchar NOT NULL UNIQUE,
-        metadata jsonb,
-        "createdAt" timestamptz NOT NULL DEFAULT now(),
-        "updatedAt" timestamptz NOT NULL DEFAULT now()
-      );
+        -- Create payments_user_id_idx index
+        BEGIN
+          EXECUTE IMMEDIATE 'CREATE INDEX "payments_user_id_idx" ON "payments" ("userId")';
+        EXCEPTION
+          WHEN OTHERS THEN IF SQLCODE != -955 THEN RAISE; END IF;
+        END;
 
-      CREATE INDEX IF NOT EXISTS payments_user_id_idx
-        ON payments ("userId");
+        -- Create usage_charges table
+        BEGIN
+          EXECUTE IMMEDIATE '
+            CREATE TABLE "usage_charges" (
+              "id" VARCHAR2(36) PRIMARY KEY,
+              "userId" VARCHAR2(36) NOT NULL REFERENCES "users"("id") ON DELETE CASCADE,
+              "stripeInvoiceId" VARCHAR2(4000),
+              "stripeSubscriptionId" VARCHAR2(4000),
+              "stripeSubscriptionItemId" VARCHAR2(4000),
+              "stripePaymentIntentId" VARCHAR2(4000),
+              "amountGbp" NUMBER(10) NOT NULL,
+              "description" VARCHAR2(4000),
+              "billingPeriodStart" DATE NOT NULL,
+              "billingPeriodEnd" DATE NOT NULL,
+              "status" VARCHAR2(4000) DEFAULT ''pending'' NOT NULL,
+              "idempotencyKey" VARCHAR2(4000) NOT NULL UNIQUE,
+              "usageReportedAt" TIMESTAMP WITH TIME ZONE,
+              "createdAt" TIMESTAMP WITH TIME ZONE DEFAULT SYSTIMESTAMP NOT NULL,
+              "updatedAt" TIMESTAMP WITH TIME ZONE DEFAULT SYSTIMESTAMP NOT NULL
+            )
+          ';
+        EXCEPTION
+          WHEN OTHERS THEN IF SQLCODE != -955 THEN RAISE; END IF;
+        END;
 
-      CREATE TABLE IF NOT EXISTS usage_charges (
-        id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-        "userId" uuid NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-        "stripeInvoiceId" varchar,
-        "stripeSubscriptionId" varchar,
-        "stripeSubscriptionItemId" varchar,
-        "stripePaymentIntentId" varchar,
-        "amountGbp" integer NOT NULL,
-        description varchar,
-        "billingPeriodStart" date NOT NULL,
-        "billingPeriodEnd" date NOT NULL,
-        status varchar NOT NULL DEFAULT 'pending',
-        "idempotencyKey" varchar NOT NULL UNIQUE,
-        "usageReportedAt" timestamptz,
-        "createdAt" timestamptz NOT NULL DEFAULT now(),
-        "updatedAt" timestamptz NOT NULL DEFAULT now()
-      );
+        -- Create usage_charges_user_id_idx index
+        BEGIN
+          EXECUTE IMMEDIATE 'CREATE INDEX "usage_charges_user_id_idx" ON "usage_charges" ("userId")';
+        EXCEPTION
+          WHEN OTHERS THEN IF SQLCODE != -955 THEN RAISE; END IF;
+        END;
 
-      CREATE INDEX IF NOT EXISTS usage_charges_user_id_idx
-        ON usage_charges ("userId");
-      CREATE INDEX IF NOT EXISTS usage_charges_period_idx
-        ON usage_charges ("billingPeriodStart", "billingPeriodEnd");
+        -- Create usage_charges_period_idx index
+        BEGIN
+          EXECUTE IMMEDIATE 'CREATE INDEX "usage_charges_period_idx" ON "usage_charges" ("billingPeriodStart", "billingPeriodEnd")';
+        EXCEPTION
+          WHEN OTHERS THEN IF SQLCODE != -955 THEN RAISE; END IF;
+        END;
 
-      -- Add missing columns before creating index (idempotent)
-      ALTER TABLE usage_charges
-        ADD COLUMN IF NOT EXISTS "stripeSubscriptionId" varchar;
-      ALTER TABLE usage_charges
-        ADD COLUMN IF NOT EXISTS "stripeSubscriptionItemId" varchar;
-      ALTER TABLE usage_charges
-        ADD COLUMN IF NOT EXISTS "stripeInvoiceId" varchar;
-      ALTER TABLE usage_charges
-        ADD COLUMN IF NOT EXISTS "usageReportedAt" timestamptz;
+        -- Add stripeSubscriptionId column if not exists
+        DECLARE
+          v_count NUMBER;
+        BEGIN
+          SELECT COUNT(*) INTO v_count FROM USER_TAB_COLUMNS
+          WHERE TABLE_NAME = 'usage_charges' AND COLUMN_NAME = 'stripeSubscriptionId';
+          IF v_count = 0 THEN
+            EXECUTE IMMEDIATE 'ALTER TABLE "usage_charges" ADD "stripeSubscriptionId" VARCHAR2(4000)';
+          END IF;
+        END;
 
-      -- Create index after columns are guaranteed to exist
-      CREATE INDEX IF NOT EXISTS usage_charges_subscription_idx
-        ON usage_charges ("stripeSubscriptionId", "stripeSubscriptionItemId");
+        -- Add stripeSubscriptionItemId column if not exists
+        DECLARE
+          v_count NUMBER;
+        BEGIN
+          SELECT COUNT(*) INTO v_count FROM USER_TAB_COLUMNS
+          WHERE TABLE_NAME = 'usage_charges' AND COLUMN_NAME = 'stripeSubscriptionItemId';
+          IF v_count = 0 THEN
+            EXECUTE IMMEDIATE 'ALTER TABLE "usage_charges" ADD "stripeSubscriptionItemId" VARCHAR2(4000)';
+          END IF;
+        END;
 
-      CREATE TABLE IF NOT EXISTS billing_subscriptions (
-        id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-        "userId" uuid NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-        "stripeSubscriptionId" varchar NOT NULL UNIQUE,
-        "stripeSubscriptionItemId" varchar NOT NULL,
-        "stripePriceId" varchar NOT NULL,
-        status varchar NOT NULL DEFAULT 'incomplete',
-        "currentPeriodStart" date,
-        "currentPeriodEnd" date,
-        "cancelAtPeriodEnd" boolean NOT NULL DEFAULT false,
-        "canceledAt" timestamptz,
-        "createdAt" timestamptz NOT NULL DEFAULT now(),
-        "updatedAt" timestamptz NOT NULL DEFAULT now()
-      );
+        -- Add stripeInvoiceId column if not exists
+        DECLARE
+          v_count NUMBER;
+        BEGIN
+          SELECT COUNT(*) INTO v_count FROM USER_TAB_COLUMNS
+          WHERE TABLE_NAME = 'usage_charges' AND COLUMN_NAME = 'stripeInvoiceId';
+          IF v_count = 0 THEN
+            EXECUTE IMMEDIATE 'ALTER TABLE "usage_charges" ADD "stripeInvoiceId" VARCHAR2(4000)';
+          END IF;
+        END;
 
-      CREATE INDEX IF NOT EXISTS billing_subscriptions_user_id_idx
-        ON billing_subscriptions ("userId");
+        -- Add usageReportedAt column if not exists
+        DECLARE
+          v_count NUMBER;
+        BEGIN
+          SELECT COUNT(*) INTO v_count FROM USER_TAB_COLUMNS
+          WHERE TABLE_NAME = 'usage_charges' AND COLUMN_NAME = 'usageReportedAt';
+          IF v_count = 0 THEN
+            EXECUTE IMMEDIATE 'ALTER TABLE "usage_charges" ADD "usageReportedAt" TIMESTAMP WITH TIME ZONE';
+          END IF;
+        END;
+
+        -- Create usage_charges_subscription_idx index (after columns guaranteed to exist)
+        BEGIN
+          EXECUTE IMMEDIATE 'CREATE INDEX "usage_charges_subscription_idx" ON "usage_charges" ("stripeSubscriptionId", "stripeSubscriptionItemId")';
+        EXCEPTION
+          WHEN OTHERS THEN IF SQLCODE != -955 THEN RAISE; END IF;
+        END;
+
+        -- Create billing_subscriptions table
+        BEGIN
+          EXECUTE IMMEDIATE '
+            CREATE TABLE "billing_subscriptions" (
+              "id" VARCHAR2(36) PRIMARY KEY,
+              "userId" VARCHAR2(36) NOT NULL REFERENCES "users"("id") ON DELETE CASCADE,
+              "stripeSubscriptionId" VARCHAR2(4000) NOT NULL UNIQUE,
+              "stripeSubscriptionItemId" VARCHAR2(4000) NOT NULL,
+              "stripePriceId" VARCHAR2(4000) NOT NULL,
+              "status" VARCHAR2(4000) DEFAULT ''incomplete'' NOT NULL,
+              "currentPeriodStart" DATE,
+              "currentPeriodEnd" DATE,
+              "cancelAtPeriodEnd" NUMBER(1) DEFAULT 0 NOT NULL,
+              "canceledAt" TIMESTAMP WITH TIME ZONE,
+              "createdAt" TIMESTAMP WITH TIME ZONE DEFAULT SYSTIMESTAMP NOT NULL,
+              "updatedAt" TIMESTAMP WITH TIME ZONE DEFAULT SYSTIMESTAMP NOT NULL
+            )
+          ';
+        EXCEPTION
+          WHEN OTHERS THEN IF SQLCODE != -955 THEN RAISE; END IF;
+        END;
+
+        -- Create billing_subscriptions_user_id_idx index
+        BEGIN
+          EXECUTE IMMEDIATE 'CREATE INDEX "billing_subscriptions_user_id_idx" ON "billing_subscriptions" ("userId")';
+        EXCEPTION
+          WHEN OTHERS THEN IF SQLCODE != -955 THEN RAISE; END IF;
+        END;
+      END;
     `,
   },
   {
     id: '002_add_email_sent_at_to_usage_charges',
     sql: `
-      ALTER TABLE usage_charges
-        ADD COLUMN IF NOT EXISTS "emailSentAt" timestamptz;
+      DECLARE
+        v_count NUMBER;
+      BEGIN
+        SELECT COUNT(*) INTO v_count FROM USER_TAB_COLUMNS
+        WHERE TABLE_NAME = 'usage_charges' AND COLUMN_NAME = 'emailSentAt';
+        IF v_count = 0 THEN
+          EXECUTE IMMEDIATE 'ALTER TABLE "usage_charges" ADD "emailSentAt" TIMESTAMP WITH TIME ZONE';
+        END IF;
+      END;
     `,
   },
 ];

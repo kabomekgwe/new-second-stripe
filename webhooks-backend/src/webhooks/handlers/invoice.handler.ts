@@ -2,14 +2,14 @@ import { Injectable, Logger } from '@nestjs/common';
 import Stripe from 'stripe';
 import { ChargeStatus } from '@stripe-app/shared';
 import { EmailService } from '../../email/email.service';
-import { PostgresService } from '../../database/postgres.service';
+import { OracleService } from '../../database/oracle.service';
 
 @Injectable()
 export class InvoiceHandler {
   private readonly logger = new Logger(InvoiceHandler.name);
 
   constructor(
-    private readonly database: PostgresService,
+    private readonly database: OracleService,
     private readonly emailService: EmailService,
   ) {}
 
@@ -61,15 +61,13 @@ export class InvoiceHandler {
 
     for (const charge of charges) {
       await this.database.query(
-        `
-          UPDATE usage_charges
-          SET
-            "stripeInvoiceId" = $2,
-            "stripePaymentIntentId" = $3,
-            status = $4,
-            "updatedAt" = now()
-          WHERE id = $1
-        `,
+        `UPDATE usage_charges
+         SET
+           "stripeInvoiceId" = :2,
+           "stripePaymentIntentId" = :3,
+           status = :4,
+           "updatedAt" = SYSTIMESTAMP
+         WHERE id = :1`,
         [charge.id, invoice.id, paymentIntentId, status],
       );
 
@@ -113,15 +111,13 @@ export class InvoiceHandler {
       );
 
       const chargeResult = await this.database.query<{ id: string }>(
-        `
-          SELECT id
-          FROM usage_charges
-          WHERE "stripeSubscriptionId" = $1
-            AND "stripeSubscriptionItemId" = $2
-            AND "billingPeriodStart" = $3
-            AND "billingPeriodEnd" = $4
-          LIMIT 1
-        `,
+        `SELECT id
+         FROM usage_charges
+         WHERE "stripeSubscriptionId" = :1
+           AND "stripeSubscriptionItemId" = :2
+           AND "billingPeriodStart" = :3
+           AND "billingPeriodEnd" = :4
+         FETCH FIRST 1 ROWS ONLY`,
         [subscriptionId, subscriptionItemId, billingPeriodStart, billingPeriodEnd],
       );
       const charge = chargeResult.rows[0] ?? null;
@@ -154,21 +150,19 @@ export class InvoiceHandler {
       email: string;
       name: string;
     }>(
-      `
-        SELECT
-          uc.id,
-          uc."amountGbp",
-          uc.description,
-          uc."billingPeriodStart",
-          uc."billingPeriodEnd",
-          uc."emailSentAt",
-          u.email,
-          u.name
-        FROM usage_charges uc
-        JOIN users u ON u.id = uc."userId"
-        WHERE uc.id = $1
-        LIMIT 1
-      `,
+      `SELECT
+         uc.id,
+         uc."amountGbp",
+         uc.description,
+         uc."billingPeriodStart",
+         uc."billingPeriodEnd",
+         uc."emailSentAt",
+         u.email,
+         u.name
+       FROM usage_charges uc
+       JOIN users u ON u.id = uc."userId"
+       WHERE uc.id = :1
+       FETCH FIRST 1 ROWS ONLY`,
       [chargeId],
     );
     const charge = result.rows[0];
@@ -194,7 +188,7 @@ export class InvoiceHandler {
     });
 
     await this.database.query(
-      `UPDATE usage_charges SET "emailSentAt" = now(), "updatedAt" = now() WHERE id = $1`,
+      `UPDATE usage_charges SET "emailSentAt" = SYSTIMESTAMP, "updatedAt" = SYSTIMESTAMP WHERE id = :1`,
       [chargeId],
     );
   }

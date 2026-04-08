@@ -1,19 +1,20 @@
 services:
-  postgres:
-    image: postgres:16-alpine
+  oracle:
+    image: gvenzl/oracle-free:23-slim-faststart
     ports:
-      - "5481:5432"
+      - "1521:1521"
     environment:
-      POSTGRES_DB: stripe_app
-      POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: postgres
+      ORACLE_PASSWORD: oracle
+      APP_USER: app_user
+      APP_USER_PASSWORD: app_password
     volumes:
-      - pgdata:/var/lib/postgresql/data
+      - oracledata:/opt/oracle/oradata
     healthcheck:
-      test: [ "CMD-SHELL", "pg_isready -U postgres" ]
-      interval: 5s
-      timeout: 3s
-      retries: 5
+      test: ["CMD", "healthcheck.sh"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 40s
 
   redis:
     image: redis:7-alpine
@@ -35,11 +36,11 @@ services:
       - "4917:4917"
     environment:
       PORT: 4917
-      DB_HOST: postgres
-      DB_PORT: 5432
-      DB_NAME: stripe_app
-      DB_USER: postgres
-      DB_PASSWORD: postgres
+      DB_HOST: oracle
+      DB_PORT: 1521
+      DB_USER: app_user
+      DB_PASSWORD: app_password
+      DB_SERVICE_NAME: FREEPDB1
       REDIS_URL: redis://redis:6379
       SESSION_SECRET: dev-session-secret-change-in-prod
       STRIPE_SECRET_KEY: ${STRIPE_SECRET_KEY:-sk_test_xxx}
@@ -52,7 +53,7 @@ services:
       timeout: 5s
       retries: 5
     depends_on:
-      postgres:
+      oracle:
         condition: service_healthy
       redis:
         condition: service_healthy
@@ -65,11 +66,11 @@ services:
       - "4923:4923"
     environment:
       PORT: 4923
-      DB_HOST: postgres
-      DB_PORT: 5432
-      DB_NAME: stripe_app
-      DB_USER: postgres
-      DB_PASSWORD: postgres
+      DB_HOST: oracle
+      DB_PORT: 1521
+      DB_USER: app_user
+      DB_PASSWORD: app_password
+      DB_SERVICE_NAME: FREEPDB1
       STRIPE_SECRET_KEY: ${STRIPE_SECRET_KEY:-sk_test_xxx}
       STRIPE_WEBHOOK_SECRET: ${STRIPE_WEBHOOK_SECRET:-whsec_xxx}
       RESEND_API_KEY: ${RESEND_API_KEY:-resend_dev_key}
@@ -80,9 +81,9 @@ services:
       timeout: 5s
       retries: 5
     depends_on:
-      postgres:
+      oracle:
         condition: service_healthy
 
 volumes:
-  pgdata:
+  oracledata:
   redisdata:
