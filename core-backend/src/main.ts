@@ -70,7 +70,17 @@ async function bootstrap() {
 
   // CSRF protection - applied after session so tokens can be generated per session
   const { doubleCsrfProtection } = getCsrfConfig(configService);
-  app.use(doubleCsrfProtection);
+  app.use((req, res, next) => {
+    doubleCsrfProtection(req, res, (err) => {
+      if (err) {
+        return res.status(403).json({
+          statusCode: 403,
+          message: ['Invalid or missing CSRF token'],
+        });
+      }
+      next();
+    });
+  });
 
   const port = configService.get('PORT', 3001);
   await app.listen(port);

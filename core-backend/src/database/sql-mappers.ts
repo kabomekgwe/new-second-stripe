@@ -108,6 +108,7 @@ export function mapUsageCharge(row: Record<string, unknown>): UsageCharge {
     status: row.status as ChargeStatus,
     idempotencyKey: row.idempotencyKey as string,
     usageReportedAt: toDate(row.usageReportedAt as NullableDate),
+    emailSentAt: toDate(row.emailSentAt as NullableDate) ?? null,
     user: undefined as never,
     createdAt: toDate(row.createdAt as NullableDate) ?? new Date(0),
     updatedAt: toDate(row.updatedAt as NullableDate) ?? new Date(0),

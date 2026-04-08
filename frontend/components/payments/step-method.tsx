@@ -1,7 +1,7 @@
 'use client';
 
 import Link from 'next/link';
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import type { PaymentMethodResponse } from '@stripe-app/shared';
 import { PaymentMethodIcon } from '@/components/payment-methods/payment-method-icon';
 import { getMethodLabel } from './payment-utils';
@@ -21,11 +21,8 @@ export function StepMethod({
   onBack: () => void;
   onNext: (paymentMethodId: string) => void;
 }) {
-  const [localSelection, setLocalSelection] = useState(selectedMethodId ?? '');
-
-  useEffect(() => {
-    setLocalSelection(selectedMethodId ?? '');
-  }, [selectedMethodId]);
+  const [localSelection, setLocalSelection] = useState<string | null>(null);
+  const activeSelection = localSelection ?? selectedMethodId ?? '';
 
   if (isLoading) {
     return (
@@ -92,7 +89,7 @@ export function StepMethod({
 
       <div className="space-y-3">
         {methods.map((method) => {
-          const isSelected = localSelection === method.stripePaymentMethodId;
+          const isSelected = activeSelection === method.stripePaymentMethodId;
 
           return (
             <button
@@ -146,11 +143,11 @@ export function StepMethod({
         </button>
         <button
           onClick={() => {
-            if (localSelection) {
-              onNext(localSelection);
+            if (activeSelection) {
+              onNext(activeSelection);
             }
           }}
-          disabled={!localSelection}
+          disabled={!activeSelection}
           className="flex-1 rounded-xl bg-slate-950 px-4 py-3 text-sm font-medium text-white transition-colors hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-50"
         >
           Continue to Review

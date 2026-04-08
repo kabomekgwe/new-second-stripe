@@ -44,11 +44,9 @@ export default function RegisterForm() {
     : null;
 
   async function onSubmit(data: RegisterFormData) {
-    try {
-      await registerUser(data).unwrap();
-      router.push('/');
-    } catch {
-      // The mutation error is surfaced through `apiError`; avoid rethrowing into the runtime overlay.
+    const result = await registerUser(data);
+    if ('data' in result) {
+      router.push('/auth/login');
     }
   }
 

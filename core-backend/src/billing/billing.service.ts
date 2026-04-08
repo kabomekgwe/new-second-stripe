@@ -132,6 +132,7 @@ export class BillingService {
       status: ChargeStatus.PROCESSING,
       idempotencyKey,
       usageReportedAt: new Date(),
+      emailSentAt: null,
     });
   }
 

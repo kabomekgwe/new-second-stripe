@@ -25,11 +25,9 @@ export default function LoginForm() {
     : null;
 
   async function onSubmit(data: LoginFormData) {
-    try {
-      await login(data).unwrap();
+    const result = await login(data);
+    if ('data' in result) {
       router.push('/');
-    } catch {
-      // The mutation error is surfaced through `apiError`; avoid rethrowing into the runtime overlay.
     }
   }
 

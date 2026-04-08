@@ -3,9 +3,10 @@ import type { BaseQueryFn, FetchArgs, FetchBaseQueryError } from '@reduxjs/toolk
 
 // Cache for CSRF token
 let csrfToken: string | null = null;
+const CORE_API_BASE_PATH = '/api/core';
 
 const baseQuery = fetchBaseQuery({
-  baseUrl: process.env.NEXT_PUBLIC_CORE_API_URL || 'http://localhost:4917',
+  baseUrl: CORE_API_BASE_PATH,
   credentials: 'include',
   prepareHeaders: (headers) => {
     headers.set('Content-Type', 'application/json');
@@ -17,10 +18,7 @@ const baseQuery = fetchBaseQuery({
  * Fetches a fresh CSRF token from the server.
  */
 async function fetchCsrfToken(): Promise<string> {
-  const response = await fetch(
-    `${process.env.NEXT_PUBLIC_CORE_API_URL || 'http://localhost:4917'}/csrf/token`,
-    { credentials: 'include' }
-  );
+  const response = await fetch(`${CORE_API_BASE_PATH}/csrf/token`, { credentials: 'include' });
   if (!response.ok) {
     throw new Error('Failed to fetch CSRF token');
   }
