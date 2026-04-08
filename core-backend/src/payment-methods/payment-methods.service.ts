@@ -10,7 +10,8 @@ import {
   getAvailablePaymentMethodDefinitionsForCountry,
   isPaymentMethodTypeAvailableForCountry,
 } from '@stripe-app/shared';
-import { StripeService } from '../stripe/stripe.service';
+import { StripePaymentMethodsService } from '../stripe/stripe-payment-methods.service';
+import { StripeCustomersService } from '../stripe/stripe-customers.service';
 import { generateUniqueIdempotencyKey } from '../common/utils/idempotency';
 import { UsersSqlService } from '../users/users.sql.service';
 import { PaymentMethodsSqlService } from './payment-methods.sql.service';
@@ -28,7 +29,8 @@ export class PaymentMethodsService {
   constructor(
     private readonly paymentMethodsSql: PaymentMethodsSqlService,
     private readonly usersSql: UsersSqlService,
-    private readonly stripeService: StripeService,
+    private readonly stripePaymentMethods: StripePaymentMethodsService,
+    private readonly stripeCustomers: StripeCustomersService,
   ) {}
 
   async getUserPaymentMethods(userId: string): Promise<PaymentMethod[]> {
@@ -67,7 +69,7 @@ export class PaymentMethodsService {
       Date.now().toString(),
     );
 
-    const setupIntent = await this.stripeService.createSetupIntent(
+    const setupIntent = await this.stripePaymentMethods.createSetupIntent(
       user.stripeCustomerId!,
       idempotencyKey,
     );
@@ -107,7 +109,7 @@ export class PaymentMethodsService {
       pm.stripePaymentMethodId,
     );
 
-    await this.stripeService.detachPaymentMethod(
+    await this.stripePaymentMethods.detachPaymentMethod(
       pm.stripePaymentMethodId,
       idempotencyKey,
     );
@@ -155,7 +157,7 @@ export class PaymentMethodsService {
     }
 
     const user = await this.ensureStripeCustomer(userId);
-    const stripePm = await this.stripeService.retrievePaymentMethod(
+    const stripePm = await this.stripePaymentMethods.retrievePaymentMethod(
       stripePaymentMethodId,
     );
     const stripeCustomerId =
@@ -224,7 +226,7 @@ export class PaymentMethodsService {
       'create_customer',
       userId,
     );
-    const customer = await this.stripeService.createCustomer(
+    const customer = await this.stripeCustomers.createCustomer(
       {
         email: user.email,
         name: user.name ?? undefined,
@@ -242,7 +244,7 @@ export class PaymentMethodsService {
   private async findActiveSetupIntent(
     customerId: string,
   ): Promise<Stripe.SetupIntent | null> {
-    const setupIntents = await this.stripeService.listSetupIntents(customerId);
+    const setupIntents = await this.stripePaymentMethods.listSetupIntents(customerId);
 
     return (
       setupIntents.data.find((setupIntent) =>
@@ -266,7 +268,7 @@ export class PaymentMethodsService {
       return;
     }
 
-    await this.stripeService.updateCustomerDefaultPaymentMethod(
+    await this.stripeCustomers.updateDefaultPaymentMethod(
       stripeCustomerId,
       stripePaymentMethodId,
     );

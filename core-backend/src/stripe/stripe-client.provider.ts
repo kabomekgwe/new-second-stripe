@@ -1,7 +1,8 @@
 import { ConfigService } from '@nestjs/config';
 import Stripe from 'stripe';
+import { STRIPE_CLIENT } from './stripe-client.token';
 
-export function createStripeClient(configService: ConfigService): Stripe {
+function createStripeClient(configService: ConfigService): Stripe {
   const secretKey = configService.get<string>('STRIPE_SECRET_KEY', '');
   const nodeEnv = configService.get<string>('NODE_ENV', 'development');
 
@@ -20,3 +21,9 @@ export function createStripeClient(configService: ConfigService): Stripe {
 
   return new Stripe(secretKey, { apiVersion: '2026-02-25.clover' });
 }
+
+export const stripeClientProvider = {
+  provide: STRIPE_CLIENT,
+  useFactory: (configService: ConfigService) => createStripeClient(configService),
+  inject: [ConfigService],
+};

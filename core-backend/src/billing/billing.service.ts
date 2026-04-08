@@ -8,33 +8,38 @@ import {
   User,
 } from '@stripe-app/shared';
 import Stripe from 'stripe';
-import { StripeService } from '../stripe/stripe.service';
+import { StripeBillingService } from '../stripe/stripe-billing.service';
+import { StripeCustomersService } from '../stripe/stripe-customers.service';
 import { generateUniqueIdempotencyKey } from '../common/utils/idempotency';
 import { BillingSqlService } from './billing.sql.service';
+
+/** Day of month when subscriptions bill. */
+const BILLING_DAY = 25;
 
 @Injectable()
 export class BillingService {
   private readonly logger = new Logger(BillingService.name);
-  private readonly billingPriceId: string;
+  private readonly billingProductId: string;
 
   constructor(
     private readonly billingSql: BillingSqlService,
-    private readonly stripeService: StripeService,
+    private readonly stripeBilling: StripeBillingService,
+    private readonly stripeCustomers: StripeCustomersService,
     private readonly configService: ConfigService,
   ) {
-    this.billingPriceId = this.configService.get<string>(
-      'STRIPE_BILLING_METERED_PRICE_ID',
+    this.billingProductId = this.configService.get<string>(
+      'STRIPE_BILLING_PRODUCT_ID',
       '',
     );
     const nodeEnv = this.configService.get<string>('NODE_ENV', 'development');
     if (
       nodeEnv === 'production' &&
-      (!this.billingPriceId || this.billingPriceId.endsWith('_xxx'))
+      (!this.billingProductId || this.billingProductId.endsWith('_xxx'))
     ) {
-      throw new Error('STRIPE_BILLING_METERED_PRICE_ID must be configured');
+      throw new Error('STRIPE_BILLING_PRODUCT_ID must be configured');
     }
-    if (!this.billingPriceId && nodeEnv !== 'production') {
-      this.logger.warn('STRIPE_BILLING_METERED_PRICE_ID is not set');
+    if (!this.billingProductId && nodeEnv !== 'production') {
+      this.logger.warn('STRIPE_BILLING_PRODUCT_ID is not set');
     }
   }
 
@@ -43,7 +48,7 @@ export class BillingService {
     amount: number,
     description?: string,
   ): Promise<UsageCharge> {
-    return this.reportUsageForUser(user, amount, description);
+    return this.addInvoiceItemForUser(user, amount, description);
   }
 
   async chargeAllUsers(): Promise<{
@@ -63,7 +68,7 @@ export class BillingService {
     };
     for (const user of users) {
       try {
-        const charge = await this.reportUsageForUser(
+        const charge = await this.addInvoiceItemForUser(
           user,
           Number(user.monthlyManagementFee),
         );
@@ -88,7 +93,7 @@ export class BillingService {
     return this.billingSql.listUsageChargesByUserId(userId);
   }
 
-  private async reportUsageForUser(
+  private async addInvoiceItemForUser(
     user: User,
     amount: number,
     description?: string,
@@ -105,16 +110,14 @@ export class BillingService {
     const existing =
       await this.billingSql.findUsageChargeByIdempotencyKey(idempotencyKey);
     if (existing) return existing;
-    const eventName = await this.stripeService.getBillingMeterEventName(
-      this.getBillingPriceId(),
-    );
-    await this.stripeService.createMeterEvent({
-      eventName,
-      customerId: user.stripeCustomerId,
-      value: amount,
-      identifier: idempotencyKey,
-      timestamp: Math.floor(Date.now() / 1000),
+
+    await this.stripeBilling.createInvoiceItem({
+      customer: user.stripeCustomerId,
+      amount,
+      currency: 'gbp',
+      description: description ?? `Management fee - ${period.key}`,
     });
+
     return this.billingSql.upsertUsageCharge({
       userId: user.id,
       stripeInvoiceId: null,
@@ -139,25 +142,25 @@ export class BillingService {
     );
     if (local && local.status !== BillingSubscriptionStatus.CANCELED)
       return local;
-    const subs = await this.stripeService.listSubscriptions(
+    const subs = await this.stripeBilling.listSubscriptions(
       user.stripeCustomerId!,
     );
     const existing = subs.data.find(
       (s) =>
-        s.items.data.some((i) => i.price.id === this.getBillingPriceId()) &&
-        s.status !== 'canceled',
+        s.metadata?.userId === user.id && s.status !== 'canceled',
     );
     if (existing) return this.upsertBillingSubscription(user.id, existing);
     if (!user.defaultPaymentMethodId)
       throw new Error(`User ${user.id} needs default payment method`);
-    await this.stripeService.updateCustomerDefaultPaymentMethod(
+    await this.stripeCustomers.updateDefaultPaymentMethod(
       user.stripeCustomerId!,
       user.defaultPaymentMethodId,
     );
-    const created = await this.stripeService.createBillingSubscription({
+    const created = await this.stripeBilling.createBillingSubscription({
       customerId: user.stripeCustomerId!,
-      priceId: this.getBillingPriceId(),
+      productId: this.getProductId(),
       userId: user.id,
+      billingCycleAnchor: getNextBillingAnchor(),
     });
     return this.upsertBillingSubscription(user.id, created);
   }
@@ -191,33 +194,68 @@ export class BillingService {
     });
   }
 
-  private getCurrentBillingPeriod(d = new Date()): {
+  getCurrentBillingPeriod(d = new Date()): {
     key: string;
     start: Date;
     end: Date;
   } {
-    return {
-      key: `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, '0')}`,
-      start: new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), 1)),
-      end: new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth() + 1, 0)),
-    };
+    const year = d.getUTCFullYear();
+    const month = d.getUTCMonth();
+    const day = d.getUTCDate();
+
+    // Period runs from the 25th of one month to the 24th of the next.
+    // If today >= 25th, current period started this month's 25th.
+    // If today < 25th, current period started last month's 25th.
+    let startYear: number, startMonth: number;
+    if (day >= BILLING_DAY) {
+      startYear = year;
+      startMonth = month;
+    } else {
+      // Go back one month
+      startYear = month === 0 ? year - 1 : year;
+      startMonth = month === 0 ? 11 : month - 1;
+    }
+
+    const start = new Date(Date.UTC(startYear, startMonth, BILLING_DAY));
+    const end = new Date(Date.UTC(startYear, startMonth + 1, BILLING_DAY - 1));
+
+    const label = `${start.getUTCFullYear()}-${String(start.getUTCMonth() + 1).padStart(2, '0')}-25`;
+    return { key: label, start, end };
   }
 
   async checkBillingHealth(): Promise<{
-    meterEventName: string;
-    priceId: string;
+    productId: string;
+    billingDay: number;
   }> {
     return {
-      meterEventName: await this.stripeService.getBillingMeterEventName(
-        this.getBillingPriceId(),
-      ),
-      priceId: this.getBillingPriceId(),
+      productId: this.getProductId(),
+      billingDay: BILLING_DAY,
     };
   }
 
-  private getBillingPriceId(): string {
-    if (!this.billingPriceId)
-      throw new Error('STRIPE_BILLING_METERED_PRICE_ID not configured');
-    return this.billingPriceId;
+  private getProductId(): string {
+    if (!this.billingProductId)
+      throw new Error('STRIPE_BILLING_PRODUCT_ID not configured');
+    return this.billingProductId;
   }
+}
+
+/**
+ * Returns a Unix timestamp for the next 25th at 09:00 UTC.
+ * If today is already the 25th but before 09:00, uses today.
+ * If today is the 25th at or after 09:00, or past the 25th, uses next month.
+ */
+export function getNextBillingAnchor(now = new Date()): number {
+  const year = now.getUTCFullYear();
+  const month = now.getUTCMonth();
+  const day = now.getUTCDate();
+  const hour = now.getUTCHours();
+
+  let anchorDate: Date;
+  if (day < BILLING_DAY || (day === BILLING_DAY && hour < 9)) {
+    anchorDate = new Date(Date.UTC(year, month, BILLING_DAY, 9, 0, 0));
+  } else {
+    anchorDate = new Date(Date.UTC(year, month + 1, BILLING_DAY, 9, 0, 0));
+  }
+  return Math.floor(anchorDate.getTime() / 1000);
 }

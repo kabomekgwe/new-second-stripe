@@ -4,7 +4,7 @@ import {
   User,
 } from '@stripe-app/shared';
 import { ConfigService } from '@nestjs/config';
-import { BillingService } from './billing.service';
+import { BillingService, getNextBillingAnchor } from './billing.service';
 
 describe('BillingService', () => {
   const billingSubscriptions: Array<Record<string, unknown>> = [];
@@ -55,19 +55,18 @@ describe('BillingService', () => {
     ),
   };
 
-  const stripeService = {
+  const stripeBilling = {
     listSubscriptions: jest.fn(),
     createBillingSubscription: jest.fn(),
-    updateCustomerDefaultPaymentMethod: jest.fn(),
-    getBillingMeterEventName: jest
-      .fn()
-      .mockResolvedValue('monthly_management_fee'),
-    createMeterEvent: jest.fn(),
+    createInvoiceItem: jest.fn(),
+  };
+  const stripeCustomers = {
+    updateDefaultPaymentMethod: jest.fn(),
   };
 
   const configService = {
     get: jest.fn((key: string, defaultValue?: string) => {
-      if (key === 'STRIPE_BILLING_METERED_PRICE_ID') return 'price_metered_123';
+      if (key === 'STRIPE_BILLING_PRODUCT_ID') return 'prod_123';
       if (key === 'NODE_ENV') return 'development';
       return defaultValue;
     }),
@@ -75,7 +74,8 @@ describe('BillingService', () => {
 
   const service = new BillingService(
     billingSql as never,
-    stripeService as never,
+    stripeBilling as never,
+    stripeCustomers as never,
     configService,
   );
 
@@ -83,10 +83,6 @@ describe('BillingService', () => {
     jest.resetAllMocks();
     billingSubscriptions.splice(0);
     usageCharges.splice(0);
-    // Re-stub after resetAllMocks clears initial implementations
-    stripeService.getBillingMeterEventName.mockResolvedValue(
-      'monthly_management_fee',
-    );
     billingSql.findUsageChargeByIdempotencyKey.mockImplementation(
       async (key: string) =>
         usageCharges.find((c) => c.idempotencyKey === key) ?? null,
@@ -155,43 +151,42 @@ describe('BillingService', () => {
       status: 'active',
       cancel_at_period_end: false,
       canceled_at: null,
-      items: { data: [{ id: 'si_123', price: { id: 'price_metered_123' } }] },
+      metadata: { userId: 'user_1' },
+      items: { data: [{ id: 'si_123', price: { id: 'price_inline_123' } }] },
       current_period_start: 1762896000,
       current_period_end: 1765555199,
       ...overrides,
     };
   }
 
-  it('reports metered usage for a billable user', async () => {
+  it('creates invoice item for a billable user', async () => {
     const user = buildUser();
     billingSql.findBillingSubscriptionByUserId.mockResolvedValue(null);
     billingSql.findUsageChargeByIdempotencyKey.mockResolvedValue(null);
-    stripeService.listSubscriptions.mockResolvedValue({ data: [] });
-    stripeService.createBillingSubscription.mockResolvedValue(
+    stripeBilling.listSubscriptions.mockResolvedValue({ data: [] });
+    stripeBilling.createBillingSubscription.mockResolvedValue(
       buildStripeSubscription(),
     );
-    stripeService.createMeterEvent.mockResolvedValue({
-      id: 'me_123',
-      object: 'billing.meter_event',
-    });
+    stripeBilling.createInvoiceItem.mockResolvedValue({ id: 'ii_123' });
 
     const result = await service.chargeUser(user, 1250);
 
     expect(
-      stripeService.updateCustomerDefaultPaymentMethod,
+      stripeCustomers.updateDefaultPaymentMethod,
     ).toHaveBeenCalledWith('cus_123', 'pm_123');
-    expect(stripeService.createBillingSubscription).toHaveBeenCalledWith({
-      customerId: 'cus_123',
-      priceId: 'price_metered_123',
-      userId: 'user_1',
-    });
-    expect(stripeService.createMeterEvent).toHaveBeenCalledWith(
+    expect(stripeBilling.createBillingSubscription).toHaveBeenCalledWith(
       expect.objectContaining({
-        eventName: 'monthly_management_fee',
         customerId: 'cus_123',
-        value: 1250,
+        productId: 'prod_123',
+        userId: 'user_1',
       }),
     );
+    expect(stripeBilling.createInvoiceItem).toHaveBeenCalledWith({
+      customer: 'cus_123',
+      amount: 1250,
+      currency: 'gbp',
+      description: expect.stringContaining('Management fee'),
+    });
     expect(result).toMatchObject({
       userId: 'user_1',
       stripeSubscriptionId: 'sub_123',
@@ -207,7 +202,7 @@ describe('BillingService', () => {
       userId: 'user_1',
       stripeSubscriptionId: 'sub_123',
       stripeSubscriptionItemId: 'si_123',
-      stripePriceId: 'price_metered_123',
+      stripePriceId: 'price_inline_123',
       status: BillingSubscriptionStatus.ACTIVE,
       currentPeriodStart: null,
       currentPeriodEnd: null,
@@ -215,29 +210,30 @@ describe('BillingService', () => {
       canceledAt: null,
     });
     billingSql.findUsageChargeByIdempotencyKey.mockResolvedValue(null);
+    stripeBilling.createInvoiceItem.mockResolvedValue({ id: 'ii_123' });
 
     const result = await service.chargeUser(user, 1250);
 
-    expect(stripeService.createBillingSubscription).not.toHaveBeenCalled();
+    expect(stripeBilling.createBillingSubscription).not.toHaveBeenCalled();
     expect(result).toMatchObject({
       stripeSubscriptionId: 'sub_123',
       stripeSubscriptionItemId: 'si_123',
     });
   });
 
-  it('does not report usage twice for same period', async () => {
+  it('does not charge twice for same period', async () => {
     const user = buildUser();
     billingSql.findBillingSubscriptionByUserId.mockResolvedValue(null);
-    stripeService.listSubscriptions.mockResolvedValue({ data: [] });
-    stripeService.createBillingSubscription.mockResolvedValue(
+    stripeBilling.listSubscriptions.mockResolvedValue({ data: [] });
+    stripeBilling.createBillingSubscription.mockResolvedValue(
       buildStripeSubscription(),
     );
-    stripeService.createMeterEvent.mockResolvedValue({ id: 'me_123' });
+    stripeBilling.createInvoiceItem.mockResolvedValue({ id: 'ii_123' });
 
     const first = await service.chargeUser(user, 1250);
     const second = await service.chargeUser(user, 1250);
 
-    expect(stripeService.createMeterEvent).toHaveBeenCalledTimes(1);
+    expect(stripeBilling.createInvoiceItem).toHaveBeenCalledTimes(1);
     expect(billingSql.upsertUsageCharge).toHaveBeenCalledTimes(1);
     expect(second).toEqual(first);
   });
@@ -252,6 +248,62 @@ describe('BillingService', () => {
       skipped: 0,
       errors: [],
     });
-    expect(stripeService.createMeterEvent).not.toHaveBeenCalled();
+    expect(stripeBilling.createInvoiceItem).not.toHaveBeenCalled();
+  });
+
+  describe('getCurrentBillingPeriod', () => {
+    it('returns correct period when date >= 25th', () => {
+      jest.setSystemTime(new Date('2026-03-28T12:00:00.000Z'));
+      const period = service.getCurrentBillingPeriod();
+      expect(period.key).toBe('2026-03-25');
+      expect(period.start).toEqual(new Date('2026-03-25T00:00:00.000Z'));
+      expect(period.end).toEqual(new Date('2026-04-24T00:00:00.000Z'));
+    });
+
+    it('returns correct period when date < 25th', () => {
+      jest.setSystemTime(new Date('2026-03-10T12:00:00.000Z'));
+      const period = service.getCurrentBillingPeriod();
+      expect(period.key).toBe('2026-02-25');
+      expect(period.start).toEqual(new Date('2026-02-25T00:00:00.000Z'));
+      expect(period.end).toEqual(new Date('2026-03-24T00:00:00.000Z'));
+    });
+  });
+
+  describe('getNextBillingAnchor', () => {
+    it('returns this month 25th when before the 25th', () => {
+      const anchor = getNextBillingAnchor(
+        new Date('2026-03-10T12:00:00.000Z'),
+      );
+      expect(new Date(anchor * 1000)).toEqual(
+        new Date('2026-03-25T09:00:00.000Z'),
+      );
+    });
+
+    it('returns next month 25th when past the 25th', () => {
+      const anchor = getNextBillingAnchor(
+        new Date('2026-03-26T12:00:00.000Z'),
+      );
+      expect(new Date(anchor * 1000)).toEqual(
+        new Date('2026-04-25T09:00:00.000Z'),
+      );
+    });
+
+    it('returns next month when on the 25th after 9am', () => {
+      const anchor = getNextBillingAnchor(
+        new Date('2026-03-25T10:00:00.000Z'),
+      );
+      expect(new Date(anchor * 1000)).toEqual(
+        new Date('2026-04-25T09:00:00.000Z'),
+      );
+    });
+
+    it('returns same day when on the 25th before 9am', () => {
+      const anchor = getNextBillingAnchor(
+        new Date('2026-03-25T08:00:00.000Z'),
+      );
+      expect(new Date(anchor * 1000)).toEqual(
+        new Date('2026-03-25T09:00:00.000Z'),
+      );
+    });
   });
 });

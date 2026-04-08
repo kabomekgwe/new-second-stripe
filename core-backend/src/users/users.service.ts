@@ -1,6 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { User } from '@stripe-app/shared';
-import { StripeService } from '../stripe/stripe.service';
+import { StripeCustomersService } from '../stripe/stripe-customers.service';
 import { CreateUserDto } from './dto/create-user.dto';
 import { generateIdempotencyKey } from '../common/utils/idempotency';
 import { UsersSqlService } from './users.sql.service';
@@ -9,7 +9,7 @@ import { UsersSqlService } from './users.sql.service';
 export class UsersService {
   constructor(
     private readonly usersSqlService: UsersSqlService,
-    private readonly stripeService: StripeService,
+    private readonly stripeCustomers: StripeCustomersService,
   ) {}
 
   async findById(id: string): Promise<User | null> {
@@ -24,7 +24,7 @@ export class UsersService {
     const user = await this.usersSqlService.create(dto);
 
     try {
-      const stripeCustomer = await this.stripeService.createCustomer(
+      const stripeCustomer = await this.stripeCustomers.createCustomer(
         {
           email: dto.email,
           name: dto.name,

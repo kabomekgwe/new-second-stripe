@@ -14,7 +14,7 @@ describe('PaymentsService', () => {
   const usersSql = {
     findById: jest.fn(),
   };
-  const stripeService = {
+  const stripePaymentIntents = {
     createFxQuote: jest.fn(),
     createPaymentIntent: jest.fn(),
     createCheckoutSession: jest.fn(),
@@ -27,7 +27,7 @@ describe('PaymentsService', () => {
     paymentsSql as never,
     paymentMethodsSql as never,
     usersSql as never,
-    stripeService as never,
+    stripePaymentIntents as never,
     configService as never,
   );
 
@@ -51,7 +51,7 @@ describe('PaymentsService', () => {
           type: 'card',
         },
       ]);
-      stripeService.createPaymentIntent.mockResolvedValue({
+      stripePaymentIntents.createPaymentIntent.mockResolvedValue({
         id: 'pi_123',
         client_secret: 'pi_123_secret',
         status: 'requires_confirmation',
@@ -67,7 +67,7 @@ describe('PaymentsService', () => {
         fxQuoteId: 'fxq_123',
       });
 
-      expect(stripeService.createPaymentIntent).toHaveBeenCalledWith(
+      expect(stripePaymentIntents.createPaymentIntent).toHaveBeenCalledWith(
         expect.objectContaining({
           amount: 1250,
           customer: 'cus_123',
@@ -120,7 +120,7 @@ describe('PaymentsService', () => {
         }),
       ).rejects.toThrow(BadRequestException);
 
-      expect(stripeService.createPaymentIntent).not.toHaveBeenCalled();
+      expect(stripePaymentIntents.createPaymentIntent).not.toHaveBeenCalled();
       expect(paymentsSql.create).not.toHaveBeenCalled();
     });
   });

@@ -15,7 +15,7 @@ import {
   SUPPORTED_SAVED_PAYMENT_METHOD_TYPES,
   isPaymentMethodTypeAvailableForCountry,
 } from '@stripe-app/shared';
-import { StripeService } from '../stripe/stripe.service';
+import { StripePaymentIntentsService } from '../stripe/stripe-payment-intents.service';
 import { generateUniqueIdempotencyKey } from '../common/utils/idempotency';
 import { CreatePaymentDto } from './dto/create-payment.dto';
 import { CreateCheckoutSessionDto } from './dto/create-checkout-session.dto';
@@ -34,7 +34,7 @@ export class PaymentsService {
     private readonly paymentsSql: PaymentsSqlService,
     private readonly paymentMethodsSql: PaymentMethodsSqlService,
     private readonly usersSql: UsersSqlService,
-    private readonly stripeService: StripeService,
+    private readonly stripePaymentIntents: StripePaymentIntentsService,
     private readonly configService: ConfigService,
   ) {
     this.frontendUrl = this.configService.get<string>(
@@ -67,7 +67,7 @@ export class PaymentsService {
       user.currency,
     );
 
-    const quote = await this.stripeService.createFxQuote(
+    const quote = await this.stripePaymentIntents.createFxQuote(
       {
         from_currency: 'gbp',
         to_currency: user.currency.toLowerCase(),
@@ -116,7 +116,7 @@ export class PaymentsService {
       dto.paymentMethodId,
     );
 
-    const paymentIntent = await this.stripeService.createPaymentIntent(
+    const paymentIntent = await this.stripePaymentIntents.createPaymentIntent(
       {
         amount: dto.amountGbp,
         customer: user.stripeCustomerId,
@@ -173,7 +173,7 @@ export class PaymentsService {
       String(dto.amountGbp),
     );
 
-    const session = await this.stripeService.createCheckoutSession(
+    const session = await this.stripePaymentIntents.createCheckoutSession(
       {
         mode: 'payment',
         ui_mode: 'embedded',
