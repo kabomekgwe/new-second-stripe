@@ -23,6 +23,7 @@ describe('PaymentMethodsService', () => {
     retrievePaymentMethod: jest.fn(),
   };
   const stripeCustomers = {
+    customerExists: jest.fn(),
     createCustomer: jest.fn(),
     updateDefaultPaymentMethod: jest.fn(),
   };
@@ -36,6 +37,7 @@ describe('PaymentMethodsService', () => {
 
   beforeEach(() => {
     jest.clearAllMocks();
+    stripeCustomers.customerExists.mockResolvedValue(true);
   });
 
   describe('createSetupIntent', () => {
@@ -45,6 +47,7 @@ describe('PaymentMethodsService', () => {
         stripeCustomerId: 'cus_123',
         country: 'GB',
       });
+      stripeCustomers.customerExists.mockResolvedValue(true);
       stripePaymentMethods.listSetupIntents.mockResolvedValue({
         data: [
           {
@@ -59,6 +62,39 @@ describe('PaymentMethodsService', () => {
 
       expect(result).toEqual({ clientSecret: 'seti_secret' });
       expect(stripePaymentMethods.createSetupIntent).not.toHaveBeenCalled();
+    });
+
+    it('recreates Stripe customer when stored stripeCustomerId no longer exists', async () => {
+      usersSql.findById.mockResolvedValue({
+        id: 'user_1',
+        email: 'test@example.com',
+        name: 'Test User',
+        stripeCustomerId: 'cus_missing',
+        country: 'GB',
+      });
+      stripeCustomers.customerExists.mockResolvedValue(false);
+      stripeCustomers.createCustomer.mockResolvedValue({ id: 'cus_new' });
+      usersSql.updateStripeCustomerAndReturn.mockResolvedValue({
+        id: 'user_1',
+        stripeCustomerId: 'cus_new',
+        country: 'GB',
+      });
+      stripePaymentMethods.listSetupIntents.mockResolvedValue({ data: [] });
+      stripePaymentMethods.createSetupIntent.mockResolvedValue({
+        client_secret: 'new_secret',
+      });
+
+      const result = await service.createSetupIntent('user_1');
+
+      expect(stripeCustomers.customerExists).toHaveBeenCalledWith(
+        'cus_missing',
+      );
+      expect(stripeCustomers.createCustomer).toHaveBeenCalled();
+      expect(usersSql.updateStripeCustomerAndReturn).toHaveBeenCalledWith(
+        'user_1',
+        'cus_new',
+      );
+      expect(result).toEqual({ clientSecret: 'new_secret' });
     });
 
     it('creates Stripe customer if user does not have one', async () => {
@@ -91,6 +127,40 @@ describe('PaymentMethodsService', () => {
         expect.any(String),
       );
       expect(result).toEqual({ clientSecret: 'new_secret' });
+    });
+
+    it('falls back to card-only setup intent when Stripe rejects additional types', async () => {
+      usersSql.findById.mockResolvedValue({
+        id: 'user_1',
+        stripeCustomerId: 'cus_123',
+        country: 'GB',
+      });
+      stripeCustomers.customerExists.mockResolvedValue(true);
+      stripePaymentMethods.listSetupIntents.mockResolvedValue({ data: [] });
+      stripePaymentMethods.createSetupIntent
+        .mockRejectedValueOnce({
+          message: 'Unsupported payment method type',
+          type: 'invalid_request_error',
+        })
+        .mockResolvedValueOnce({
+          client_secret: 'fallback_secret',
+        });
+
+      const result = await service.createSetupIntent('user_1');
+
+      expect(stripePaymentMethods.createSetupIntent).toHaveBeenNthCalledWith(
+        1,
+        'cus_123',
+        expect.any(Array),
+        expect.any(String),
+      );
+      expect(stripePaymentMethods.createSetupIntent).toHaveBeenNthCalledWith(
+        2,
+        'cus_123',
+        ['card'],
+        expect.any(String),
+      );
+      expect(result).toEqual({ clientSecret: 'fallback_secret' });
     });
 
     it('throws NotFoundException when user does not exist', async () => {

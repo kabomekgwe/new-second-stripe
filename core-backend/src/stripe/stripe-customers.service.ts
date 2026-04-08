@@ -6,6 +6,21 @@ import { STRIPE_CLIENT } from './stripe-client.token';
 export class StripeCustomersService {
   constructor(@Inject(STRIPE_CLIENT) private readonly stripe: Stripe) {}
 
+  async customerExists(customerId: string): Promise<boolean> {
+    try {
+      const customer = await this.stripe.customers.retrieve(customerId);
+      return !('deleted' in customer && customer.deleted === true);
+    } catch (error: unknown) {
+      if (
+        error instanceof Stripe.errors.StripeInvalidRequestError &&
+        error.code === 'resource_missing'
+      ) {
+        return false;
+      }
+      throw error;
+    }
+  }
+
   createCustomer(
     params: Stripe.CustomerCreateParams,
     idempotencyKey: string,

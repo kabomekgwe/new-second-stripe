@@ -255,6 +255,7 @@ export function getAvailablePaymentMethodDefinitionsForCountry(
 const SETUP_INTENT_EXCLUDED_TYPES = new Set([
   'apple_pay',
   'google_pay',
+  'pay_by_bank',
   'customer_balance',
 ]);
 

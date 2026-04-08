@@ -71,11 +71,11 @@ export class PaymentMethodsService {
     );
 
     const paymentMethodTypes = getStripeSetupIntentTypesForCountry(user.country);
-
-    const setupIntent = await this.stripePaymentMethods.createSetupIntent(
+    const setupIntent = await this.createSetupIntentWithFallback(
       user.stripeCustomerId!,
       paymentMethodTypes,
       idempotencyKey,
+      userId,
     );
 
     return { clientSecret: setupIntent.client_secret! };
@@ -223,7 +223,12 @@ export class PaymentMethodsService {
   private async ensureStripeCustomer(userId: string): Promise<User> {
     const user = await this.findUserOrFail(userId);
     if (user.stripeCustomerId) {
-      return user;
+      const customerExists = await this.stripeCustomers.customerExists(
+        user.stripeCustomerId,
+      );
+      if (customerExists) {
+        return user;
+      }
     }
 
     const idempotencyKey = generateUniqueIdempotencyKey(
@@ -256,6 +261,52 @@ export class PaymentMethodsService {
           setupIntent.status,
         ),
       ) ?? null
+    );
+  }
+
+  private async createSetupIntentWithFallback(
+    customerId: string,
+    paymentMethodTypes: string[],
+    idempotencyKey: string,
+    userId: string,
+  ): Promise<Stripe.SetupIntent> {
+    try {
+      return await this.stripePaymentMethods.createSetupIntent(
+        customerId,
+        paymentMethodTypes,
+        idempotencyKey,
+      );
+    } catch (error: unknown) {
+      if (
+        this.isStripeInvalidRequestError(error) &&
+        paymentMethodTypes.length > 1 &&
+        paymentMethodTypes.includes('card')
+      ) {
+        const fallbackIdempotencyKey = generateUniqueIdempotencyKey(
+          'setup_intent_fallback',
+          userId,
+          Date.now().toString(),
+        );
+        return this.stripePaymentMethods.createSetupIntent(
+          customerId,
+          ['card'],
+          fallbackIdempotencyKey,
+        );
+      }
+      throw error;
+    }
+  }
+
+  private isStripeInvalidRequestError(error: unknown): boolean {
+    if (error instanceof Stripe.errors.StripeInvalidRequestError) {
+      return true;
+    }
+
+    return (
+      typeof error === 'object' &&
+      error !== null &&
+      'type' in error &&
+      (error as { type?: unknown }).type === 'invalid_request_error'
     );
   }
 
