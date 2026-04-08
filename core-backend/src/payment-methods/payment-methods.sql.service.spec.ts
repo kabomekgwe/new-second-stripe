@@ -1,6 +1,6 @@
 import { PaymentMethodsSqlService } from './payment-methods.sql.service';
 import { OracleService } from '../database/oracle.service';
-import oracledb from 'oracledb';
+import * as oracledb from 'oracledb';
 import { randomUUID } from 'crypto';
 
 describe('PaymentMethodsSqlService', () => {

@@ -1,6 +1,6 @@
 import { Injectable, Logger, OnModuleDestroy, OnModuleInit } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import oracledb from 'oracledb';
+import * as oracledb from 'oracledb';
 import { SQL_MIGRATIONS } from './migrations';
 
 export type DbConnection = oracledb.Connection;
@@ -30,7 +30,7 @@ export class OracleService implements OnModuleInit, OnModuleDestroy {
           RUN_AT TIMESTAMP WITH TIME ZONE DEFAULT SYSTIMESTAMP NOT NULL
         )';
       EXCEPTION
-        WHEN OTHERS THEN IF SQLCODE != -955 THEN RAISE; END IF;
+        WHEN OTHERS THEN IF SQLCODE NOT IN (-955, -1408) THEN RAISE; END IF;
       END;
     `);
 
