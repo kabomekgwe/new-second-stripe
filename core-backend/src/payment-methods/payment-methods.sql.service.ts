@@ -53,26 +53,25 @@ export class PaymentMethodsSqlService {
   ): Promise<PaymentMethod> {
     await this.database.query(
       `MERGE INTO STRIPE_PAYMENT_METHODS t
-       USING (SELECT :3 AS STRIPE_PAYMENT_METHOD_ID FROM DUAL) s
+       USING (SELECT :1 AS STRIPE_PAYMENT_METHOD_ID FROM DUAL) s
        ON (t.STRIPE_PAYMENT_METHOD_ID = s.STRIPE_PAYMENT_METHOD_ID)
        WHEN MATCHED THEN UPDATE SET
          USER_ID = :2,
-         METHOD_TYPE = :4,
-         IS_DEFAULT = :5,
-         LAST4 = :6,
-         BRAND = :7,
-         EXPIRY_MONTH = :8,
-         EXPIRY_YEAR = :9,
-         METADATA = :10,
+         METHOD_TYPE = :3,
+         IS_DEFAULT = :4,
+         LAST4 = :5,
+         BRAND = :6,
+         EXPIRY_MONTH = :7,
+         EXPIRY_YEAR = :8,
+         METADATA = :9,
          UPDATED_AT = SYSTIMESTAMP
        WHEN NOT MATCHED THEN INSERT (
          ID, USER_ID, STRIPE_PAYMENT_METHOD_ID, METHOD_TYPE, IS_DEFAULT,
          LAST4, BRAND, EXPIRY_MONTH, EXPIRY_YEAR, METADATA
-       ) VALUES (:1, :2, :3, :4, :5, :6, :7, :8, :9, :10)`,
+       ) VALUES (:10, :2, :1, :3, :4, :5, :6, :7, :8, :9)`,
       [
-        randomUUID(),
-        data.userId,
         data.stripePaymentMethodId,
+        data.userId,
         data.type,
         boolToNum(data.isDefault ?? false),
         data.last4 ?? null,
@@ -80,6 +79,7 @@ export class PaymentMethodsSqlService {
         data.expiryMonth ?? null,
         data.expiryYear ?? null,
         data.metadata ? JSON.stringify(data.metadata) : null,
+        randomUUID(),
       ],
     );
 
@@ -101,26 +101,25 @@ export class PaymentMethodsSqlService {
     const result = await this.database.transaction(async (connection: DbConnection) => {
       await this.database.query(
         `MERGE INTO STRIPE_PAYMENT_METHODS t
-         USING (SELECT :3 AS STRIPE_PAYMENT_METHOD_ID FROM DUAL) s
+         USING (SELECT :1 AS STRIPE_PAYMENT_METHOD_ID FROM DUAL) s
          ON (t.STRIPE_PAYMENT_METHOD_ID = s.STRIPE_PAYMENT_METHOD_ID)
          WHEN MATCHED THEN UPDATE SET
            USER_ID = :2,
-           METHOD_TYPE = :4,
-           IS_DEFAULT = :5,
-           LAST4 = :6,
-           BRAND = :7,
-           EXPIRY_MONTH = :8,
-           EXPIRY_YEAR = :9,
-           METADATA = :10,
+           METHOD_TYPE = :3,
+           IS_DEFAULT = :4,
+           LAST4 = :5,
+           BRAND = :6,
+           EXPIRY_MONTH = :7,
+           EXPIRY_YEAR = :8,
+           METADATA = :9,
            UPDATED_AT = SYSTIMESTAMP
          WHEN NOT MATCHED THEN INSERT (
            ID, USER_ID, STRIPE_PAYMENT_METHOD_ID, METHOD_TYPE, IS_DEFAULT,
            LAST4, BRAND, EXPIRY_MONTH, EXPIRY_YEAR, METADATA
-         ) VALUES (:1, :2, :3, :4, :5, :6, :7, :8, :9, :10)`,
+         ) VALUES (:10, :2, :1, :3, :4, :5, :6, :7, :8, :9)`,
         [
-          randomUUID(),
-          data.userId,
           data.stripePaymentMethodId,
+          data.userId,
           data.type,
           boolToNum(data.isDefault ?? false),
           data.last4 ?? null,
@@ -128,6 +127,7 @@ export class PaymentMethodsSqlService {
           data.expiryMonth ?? null,
           data.expiryYear ?? null,
           data.metadata ? JSON.stringify(data.metadata) : null,
+          randomUUID(),
         ],
         connection,
       );
@@ -151,8 +151,8 @@ export class PaymentMethodsSqlService {
           connection,
         );
         await this.database.query(
-          'UPDATE USERS SET DEFAULT_PAYMENT_METHOD_ID = :2 WHERE ID = :1',
-          [data.userId, data.stripePaymentMethodId],
+          'UPDATE USERS SET DEFAULT_PAYMENT_METHOD_ID = :1 WHERE ID = :2',
+          [data.stripePaymentMethodId, data.userId],
           connection,
         );
         pm.isDefault = true;

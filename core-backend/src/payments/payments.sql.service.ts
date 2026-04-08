@@ -14,7 +14,7 @@ export class PaymentsSqlService {
     const newId = randomUUID();
     await this.database.query(
       `MERGE INTO STRIPE_PAYMENTS t
-       USING (SELECT :11 AS IDEMPOTENCY_KEY FROM DUAL) s
+       USING (SELECT :1 AS IDEMPOTENCY_KEY FROM DUAL) s
        ON (t.IDEMPOTENCY_KEY = s.IDEMPOTENCY_KEY)
        WHEN NOT MATCHED THEN INSERT (
          ID,
@@ -29,8 +29,9 @@ export class PaymentsSqlService {
          PAYMENT_METHOD_ID,
          IDEMPOTENCY_KEY,
          METADATA
-       ) VALUES (:1,:2,:3,:4,:5,:6,:7,:8,:9,:10,:11,:12)`,
+       ) VALUES (:2,:3,:4,:5,:6,:7,:8,:9,:10,:11,:1,:12)`,
       [
+        data.idempotencyKey,
         newId,
         data.userId,
         data.stripePaymentIntentId ?? null,
@@ -41,7 +42,6 @@ export class PaymentsSqlService {
         data.fxQuoteId ?? null,
         data.status,
         data.paymentMethodId ?? null,
-        data.idempotencyKey,
         data.metadata ? JSON.stringify(data.metadata) : null,
       ],
     );

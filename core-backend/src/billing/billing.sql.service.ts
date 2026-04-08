@@ -54,29 +54,28 @@ export class BillingSqlService {
   ): Promise<UsageCharge> {
     await this.database.query(
       `MERGE INTO STRIPE_USAGE_CHARGES t
-       USING (SELECT :12 AS IDEMPOTENCY_KEY FROM DUAL) s
+       USING (SELECT :1 AS IDEMPOTENCY_KEY FROM DUAL) s
        ON (t.IDEMPOTENCY_KEY = s.IDEMPOTENCY_KEY)
        WHEN MATCHED THEN UPDATE SET
-         STRIPE_INVOICE_ID = :3,
-         STRIPE_SUBSCRIPTION_ID = :4,
-         STRIPE_SUBSCRIPTION_ITEM_ID = :5,
-         STRIPE_PAYMENT_INTENT_ID = :6,
-         AMOUNT_GBP = :7,
-         DESCRIPTION = :8,
-         BILLING_PERIOD_START = :9,
-         BILLING_PERIOD_END = :10,
-         STATUS = :11,
-         USAGE_REPORTED_AT = :13,
+         STRIPE_INVOICE_ID = :2,
+         STRIPE_SUBSCRIPTION_ID = :3,
+         STRIPE_SUBSCRIPTION_ITEM_ID = :4,
+         STRIPE_PAYMENT_INTENT_ID = :5,
+         AMOUNT_GBP = :6,
+         DESCRIPTION = :7,
+         BILLING_PERIOD_START = :8,
+         BILLING_PERIOD_END = :9,
+         STATUS = :10,
+         USAGE_REPORTED_AT = :11,
          UPDATED_AT = SYSTIMESTAMP
        WHEN NOT MATCHED THEN INSERT (
          ID, USER_ID, STRIPE_INVOICE_ID, STRIPE_SUBSCRIPTION_ID,
          STRIPE_SUBSCRIPTION_ITEM_ID, STRIPE_PAYMENT_INTENT_ID, AMOUNT_GBP,
          DESCRIPTION, BILLING_PERIOD_START, BILLING_PERIOD_END, STATUS,
          IDEMPOTENCY_KEY, USAGE_REPORTED_AT
-       ) VALUES (:1,:2,:3,:4,:5,:6,:7,:8,:9,:10,:11,:12,:13)`,
+       ) VALUES (:12,:13,:2,:3,:4,:5,:6,:7,:8,:9,:10,:1,:11)`,
       [
-        randomUUID(),
-        data.userId,
+        data.idempotencyKey,
         data.stripeInvoiceId ?? null,
         data.stripeSubscriptionId ?? null,
         data.stripeSubscriptionItemId ?? null,
@@ -86,8 +85,9 @@ export class BillingSqlService {
         data.billingPeriodStart,
         data.billingPeriodEnd,
         data.status,
-        data.idempotencyKey,
         data.usageReportedAt ?? null,
+        randomUUID(),
+        data.userId,
       ],
     );
 
@@ -123,27 +123,26 @@ export class BillingSqlService {
   ): Promise<BillingSubscription> {
     await this.database.query(
       `MERGE INTO STRIPE_BILLING_SUBSCRIPTIONS t
-       USING (SELECT :3 AS STRIPE_SUBSCRIPTION_ID FROM DUAL) s
+       USING (SELECT :1 AS STRIPE_SUBSCRIPTION_ID FROM DUAL) s
        ON (t.STRIPE_SUBSCRIPTION_ID = s.STRIPE_SUBSCRIPTION_ID)
        WHEN MATCHED THEN UPDATE SET
          USER_ID = :2,
-         STRIPE_SUBSCRIPTION_ITEM_ID = :4,
-         STRIPE_PRICE_ID = :5,
-         STATUS = :6,
-         CURRENT_PERIOD_START = :7,
-         CURRENT_PERIOD_END = :8,
-         CANCEL_AT_PERIOD_END = :9,
-         CANCELED_AT = :10,
+         STRIPE_SUBSCRIPTION_ITEM_ID = :3,
+         STRIPE_PRICE_ID = :4,
+         STATUS = :5,
+         CURRENT_PERIOD_START = :6,
+         CURRENT_PERIOD_END = :7,
+         CANCEL_AT_PERIOD_END = :8,
+         CANCELED_AT = :9,
          UPDATED_AT = SYSTIMESTAMP
        WHEN NOT MATCHED THEN INSERT (
          ID, USER_ID, STRIPE_SUBSCRIPTION_ID, STRIPE_SUBSCRIPTION_ITEM_ID,
          STRIPE_PRICE_ID, STATUS, CURRENT_PERIOD_START, CURRENT_PERIOD_END,
          CANCEL_AT_PERIOD_END, CANCELED_AT
-       ) VALUES (:1,:2,:3,:4,:5,:6,:7,:8,:9,:10)`,
+       ) VALUES (:10,:2,:1,:3,:4,:5,:6,:7,:8,:9)`,
       [
-        randomUUID(),
-        data.userId,
         data.stripeSubscriptionId,
+        data.userId,
         data.stripeSubscriptionItemId,
         data.stripePriceId,
         data.status,
@@ -151,6 +150,7 @@ export class BillingSqlService {
         data.currentPeriodEnd ?? null,
         boolToNum(data.cancelAtPeriodEnd),
         data.canceledAt ?? null,
+        randomUUID(),
       ],
     );
 

@@ -61,8 +61,8 @@ export class UsersSqlService {
     customerId: string,
   ): Promise<void> {
     await this.database.query(
-      'UPDATE USERS SET STRIPE_CUSTOMER_ID = :2, UPDATED_AT = SYSTIMESTAMP WHERE ID = :1',
-      [userId, customerId],
+      'UPDATE USERS SET STRIPE_CUSTOMER_ID = :1, UPDATED_AT = SYSTIMESTAMP WHERE ID = :2',
+      [customerId, userId],
     );
   }
 
@@ -75,8 +75,8 @@ export class UsersSqlService {
     paymentMethodId: string | null,
   ): Promise<void> {
     await this.database.query(
-      'UPDATE USERS SET DEFAULT_PAYMENT_METHOD_ID = :2, UPDATED_AT = SYSTIMESTAMP WHERE ID = :1',
-      [userId, paymentMethodId],
+      'UPDATE USERS SET DEFAULT_PAYMENT_METHOD_ID = :1, UPDATED_AT = SYSTIMESTAMP WHERE ID = :2',
+      [paymentMethodId, userId],
     );
   }
 

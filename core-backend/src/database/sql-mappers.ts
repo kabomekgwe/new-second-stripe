@@ -46,9 +46,9 @@ export function mapUser(row: Record<string, unknown>): User {
     name: row.USER_NAME as string,
     country: row.COUNTRY as string,
     currency: row.CURRENCY as string,
-    stripeCustomerId: (row.STRIPE_CUSTOMER_ID as NullableString) ?? null,
+    stripeCustomerId: (row.STRIPE_CUSTOMER_ID as NullableString) || null,
     defaultPaymentMethodId:
-      (row.DEFAULT_PAYMENT_METHOD_ID as NullableString) ?? null,
+      (row.DEFAULT_PAYMENT_METHOD_ID as NullableString) || null,
     monthlyManagementFee:
       toNumber(row.MONTHLY_MANAGEMENT_FEE as NullableNumber) ?? null,
     accountValue: toNumber(row.ACCOUNT_VALUE as NullableNumber) ?? null,
