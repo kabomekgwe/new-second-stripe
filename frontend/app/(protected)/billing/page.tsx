@@ -1,5 +1,6 @@
 import { CurrentFee } from '@/components/billing/current-fee';
 import { BillingHistory } from '@/components/billing/billing-history';
+import { BillingTrigger } from '@/components/billing/billing-trigger';
 
 export default function BillingPage() {
   return (
@@ -12,6 +13,7 @@ export default function BillingPage() {
       </div>
       <div className="mt-6 space-y-6">
         <CurrentFee />
+        <BillingTrigger />
         <BillingHistory />
       </div>
     </div>

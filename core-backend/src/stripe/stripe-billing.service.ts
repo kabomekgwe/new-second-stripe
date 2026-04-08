@@ -22,10 +22,12 @@ export class StripeBillingService {
     productId: string;
     userId: string;
     billingCycleAnchor: number;
+    defaultPaymentMethod: string;
   }): Promise<Stripe.Subscription> {
     return this.stripe.subscriptions.create({
       customer: params.customerId,
       collection_method: 'charge_automatically',
+      default_payment_method: params.defaultPaymentMethod,
       items: [
         {
           price_data: {
@@ -44,6 +46,7 @@ export class StripeBillingService {
 
   createInvoiceItem(params: {
     customer: string;
+    subscription: string;
     amount: number;
     currency: string;
     description: string;

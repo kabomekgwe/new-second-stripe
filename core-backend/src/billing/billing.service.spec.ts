@@ -179,10 +179,12 @@ describe('BillingService', () => {
         customerId: 'cus_123',
         productId: 'prod_123',
         userId: 'user_1',
+        defaultPaymentMethod: 'pm_123',
       }),
     );
     expect(stripeBilling.createInvoiceItem).toHaveBeenCalledWith({
       customer: 'cus_123',
+      subscription: 'sub_123',
       amount: 1250,
       currency: 'gbp',
       description: expect.stringContaining('Management fee'),

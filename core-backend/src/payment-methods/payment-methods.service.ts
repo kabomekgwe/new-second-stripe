@@ -8,6 +8,7 @@ import {
   PaymentMethod,
   User,
   getAvailablePaymentMethodDefinitionsForCountry,
+  getStripeSetupIntentTypesForCountry,
   isPaymentMethodTypeAvailableForCountry,
 } from '@stripe-app/shared';
 import { StripePaymentMethodsService } from '../stripe/stripe-payment-methods.service';
@@ -69,8 +70,11 @@ export class PaymentMethodsService {
       Date.now().toString(),
     );
 
+    const paymentMethodTypes = getStripeSetupIntentTypesForCountry(user.country);
+
     const setupIntent = await this.stripePaymentMethods.createSetupIntent(
       user.stripeCustomerId!,
+      paymentMethodTypes,
       idempotencyKey,
     );
 

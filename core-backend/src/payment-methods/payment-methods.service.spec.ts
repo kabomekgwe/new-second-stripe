@@ -43,6 +43,7 @@ describe('PaymentMethodsService', () => {
       usersSql.findById.mockResolvedValue({
         id: 'user_1',
         stripeCustomerId: 'cus_123',
+        country: 'GB',
       });
       stripePaymentMethods.listSetupIntents.mockResolvedValue({
         data: [
@@ -66,11 +67,13 @@ describe('PaymentMethodsService', () => {
         email: 'test@example.com',
         name: 'Test User',
         stripeCustomerId: null,
+        country: 'GB',
       });
       stripeCustomers.createCustomer.mockResolvedValue({ id: 'cus_new' });
       usersSql.updateStripeCustomerAndReturn.mockResolvedValue({
         id: 'user_1',
         stripeCustomerId: 'cus_new',
+        country: 'GB',
       });
       stripePaymentMethods.listSetupIntents.mockResolvedValue({ data: [] });
       stripePaymentMethods.createSetupIntent.mockResolvedValue({

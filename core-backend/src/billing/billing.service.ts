@@ -113,6 +113,7 @@ export class BillingService {
 
     await this.stripeBilling.createInvoiceItem({
       customer: user.stripeCustomerId,
+      subscription: subscription.stripeSubscriptionId,
       amount,
       currency: 'gbp',
       description: description ?? `Management fee - ${period.key}`,
@@ -161,6 +162,7 @@ export class BillingService {
       productId: this.getProductId(),
       userId: user.id,
       billingCycleAnchor: getNextBillingAnchor(),
+      defaultPaymentMethod: user.defaultPaymentMethodId,
     });
     return this.upsertBillingSubscription(user.id, created);
   }

@@ -8,9 +8,9 @@ export class BillingScheduler {
 
   constructor(private billingService: BillingService) {}
 
-  @Cron('0 9 1 * *') // 9 AM on the 1st of every month
+  @Cron('0 3 1 * *') // 3 AM on the 1st of every month
   async handleMonthlyBilling() {
-    this.logger.log('Starting monthly billing run');
+    this.logger.log('Starting monthly billing run (adding invoice items for 25th billing)');
     const results = await this.billingService.chargeAllUsers();
     this.logger.log(`Monthly billing complete: ${JSON.stringify(results)}`);
   }

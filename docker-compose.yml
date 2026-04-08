@@ -44,7 +44,7 @@ services:
       SESSION_SECRET: dev-session-secret-change-in-prod
       STRIPE_SECRET_KEY: ${STRIPE_SECRET_KEY:-sk_test_xxx}
       STRIPE_PUBLISHABLE_KEY: ${STRIPE_PUBLISHABLE_KEY:-pk_test_xxx}
-      STRIPE_BILLING_METERED_PRICE_ID: ${STRIPE_BILLING_METERED_PRICE_ID:-price_xxx}
+      STRIPE_BILLING_PRODUCT_ID: ${STRIPE_BILLING_PRODUCT_ID:-prod_xxx}
       FRONTEND_URL: http://localhost:3000
     healthcheck:
       test: [ "CMD-SHELL", "curl -f http://localhost:4917/ || exit 1" ]

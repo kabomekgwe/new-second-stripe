@@ -11,7 +11,20 @@ export const billingApi = apiSlice.injectEndpoints({
       query: () => '/billing/current-fee',
       providesTags: ['CurrentFee'],
     }),
+    triggerBilling: builder.mutation<UsageChargeResponse, void>({
+      query: () => ({ url: '/billing/trigger', method: 'POST' }),
+      invalidatesTags: ['Billing'],
+    }),
+    triggerAllBilling: builder.mutation<{ total: number; succeeded: number; failed: number; skipped: number }, void>({
+      query: () => ({ url: '/billing/trigger-all', method: 'POST' }),
+      invalidatesTags: ['Billing'],
+    }),
   }),
 });
 
-export const { useGetBillingQuery, useGetCurrentFeeQuery } = billingApi;
+export const {
+  useGetBillingQuery,
+  useGetCurrentFeeQuery,
+  useTriggerBillingMutation,
+  useTriggerAllBillingMutation,
+} = billingApi;

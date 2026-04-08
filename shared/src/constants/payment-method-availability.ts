@@ -247,6 +247,34 @@ export function getAvailablePaymentMethodDefinitionsForCountry(
   );
 }
 
+/**
+ * Types that can't be used with Stripe SetupIntents.
+ * Wallets (apple_pay, google_pay) are handled via 'card'.
+ * customer_balance is for invoices/bank transfers, not setup intents.
+ */
+const SETUP_INTENT_EXCLUDED_TYPES = new Set([
+  'apple_pay',
+  'google_pay',
+  'customer_balance',
+]);
+
+/**
+ * Returns the unique Stripe payment_method_types to pass when creating a
+ * SetupIntent for the given country. Filters out wallet and invoice-only types.
+ */
+export function getStripeSetupIntentTypesForCountry(
+  countryCode: string,
+): string[] {
+  const defs = getAvailablePaymentMethodDefinitionsForCountry(countryCode);
+  const types = new Set<string>();
+  for (const def of defs) {
+    if (!SETUP_INTENT_EXCLUDED_TYPES.has(def.type)) {
+      types.add(def.type);
+    }
+  }
+  return [...types];
+}
+
 export function isPaymentMethodTypeAvailableForCountry(
   paymentMethodType: string,
   countryCode: string,
