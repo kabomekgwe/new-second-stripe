@@ -2,7 +2,7 @@
 
 import Link from 'next/link';
 import { useState } from 'react';
-import type { PaymentMethodResponse } from '@stripe-app/shared';
+import type { PaymentMethodResponse } from '@/lib/shared';
 import { PaymentMethodIcon } from '@/components/payment-methods/payment-method-icon';
 import { getMethodLabel } from './payment-utils';
 

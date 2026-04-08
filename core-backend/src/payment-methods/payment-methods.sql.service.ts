@@ -1,5 +1,5 @@
 import { Injectable } from '@nestjs/common';
-import { PaymentMethod } from '@stripe-app/shared';
+import { PaymentMethod } from '../shared';
 import type { DbConnection } from '../database/oracle.service';
 import { randomUUID } from 'crypto';
 import { OracleService } from '../database/oracle.service';

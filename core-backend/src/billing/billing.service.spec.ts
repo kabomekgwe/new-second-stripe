@@ -2,7 +2,7 @@ import {
   BillingSubscriptionStatus,
   ChargeStatus,
   User,
-} from '@stripe-app/shared';
+} from '../shared';
 import { ConfigService } from '@nestjs/config';
 import { BillingService, getNextBillingAnchor } from './billing.service';
 

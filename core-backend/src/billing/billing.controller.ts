@@ -10,7 +10,7 @@ import {
 import { ConfigService } from '@nestjs/config';
 import { IsInt, Min, IsOptional, IsString } from 'class-validator';
 import { Request } from 'express';
-import { User, UsageCharge, UsageChargeResponse } from '@stripe-app/shared';
+import { User, UsageCharge, UsageChargeResponse } from '../shared';
 import { AuthenticatedGuard } from '../auth/guards/authenticated.guard';
 import { BillingService } from './billing.service';
 

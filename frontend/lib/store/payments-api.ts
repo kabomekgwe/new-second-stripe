@@ -5,7 +5,7 @@ import type {
   CreatePaymentResponse,
   FxQuoteRequest,
   FxQuoteResponse,
-} from '@stripe-app/shared';
+} from '@/lib/shared';
 
 export const paymentsApi = apiSlice.injectEndpoints({
   endpoints: (builder) => ({

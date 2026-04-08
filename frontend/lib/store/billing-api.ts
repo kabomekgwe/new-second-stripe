@@ -1,5 +1,5 @@
 import { apiSlice } from './api';
-import type { UsageChargeResponse } from '@stripe-app/shared';
+import type { UsageChargeResponse } from '@/lib/shared';
 
 export const billingApi = apiSlice.injectEndpoints({
   endpoints: (builder) => ({

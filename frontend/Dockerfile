@@ -1,16 +1,7 @@
 FROM node:22-alpine AS base
 
-# Build shared package
-FROM base AS shared
-WORKDIR /app/shared
-COPY shared/package.json shared/tsconfig.json ./
-COPY shared/src ./src
-RUN npm install && npm run build
-
 # Build frontend
 FROM base AS build
-WORKDIR /app
-COPY --from=shared /app/shared ./shared
 WORKDIR /app/frontend
 COPY frontend/package.json ./
 RUN npm install

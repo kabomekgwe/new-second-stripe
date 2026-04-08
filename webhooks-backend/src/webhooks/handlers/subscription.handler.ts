@@ -1,7 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { randomUUID } from 'crypto';
 import Stripe from 'stripe';
-import { BillingSubscriptionStatus } from '@stripe-app/shared';
+import { BillingSubscriptionStatus } from '../../shared';
 import { OracleService } from '../../database/oracle.service';
 
 const boolToNum = (v?: boolean): number => v ? 1 : 0;

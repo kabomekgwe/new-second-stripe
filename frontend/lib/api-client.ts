@@ -1,4 +1,4 @@
-import type { ApiError } from '@stripe-app/shared';
+import type { ApiError } from '@/lib/shared';
 
 const API_URL = '/api/core';
 

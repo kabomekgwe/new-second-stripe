@@ -3,7 +3,7 @@ import { ConfigService } from '@nestjs/config';
 import {
   STRIPE_WEBHOOK_EVENTS,
   WebhookEventStatus,
-} from '@stripe-app/shared';
+} from '../shared';
 import { StripeService } from '../stripe/stripe.service';
 import { OracleService } from '../database/oracle.service';
 import { SetupIntentHandler } from './handlers/setup-intent.handler';

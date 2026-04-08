@@ -1,7 +1,7 @@
 'use client';
 
 import { useState } from 'react';
-import type { FxQuoteResponse } from '@stripe-app/shared';
+import type { FxQuoteResponse } from '@/lib/shared';
 import { formatPence, formatCurrency } from './payment-utils';
 
 export function StepAmount({

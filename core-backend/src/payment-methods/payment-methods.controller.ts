@@ -12,7 +12,7 @@ import {
 } from '@nestjs/common';
 import { Request } from 'express';
 import { IsString, Matches } from 'class-validator';
-import { User } from '@stripe-app/shared';
+import { User } from '../shared';
 import { AuthenticatedGuard } from '../auth/guards/authenticated.guard';
 import { PaymentMethodsService } from './payment-methods.service';
 

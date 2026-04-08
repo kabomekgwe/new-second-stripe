@@ -1,4 +1,4 @@
-import { PaymentStatus } from '@stripe-app/shared';
+import { PaymentStatus } from '../../shared';
 import type Stripe from 'stripe';
 import { CheckoutSessionHandler } from './checkout-session.handler';
 

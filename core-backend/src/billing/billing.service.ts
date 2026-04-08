@@ -6,7 +6,7 @@ import {
   ChargeStatus,
   UsageCharge,
   User,
-} from '@stripe-app/shared';
+} from '../shared';
 import Stripe from 'stripe';
 import { StripeBillingService } from '../stripe/stripe-billing.service';
 import { StripeCustomersService } from '../stripe/stripe-customers.service';

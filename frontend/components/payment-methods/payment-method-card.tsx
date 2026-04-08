@@ -1,6 +1,6 @@
 'use client';
 
-import type { PaymentMethodResponse } from '@stripe-app/shared';
+import type { PaymentMethodResponse } from '@/lib/shared';
 import { PaymentMethodIcon } from './payment-method-icon';
 
 interface PaymentMethodCardProps {

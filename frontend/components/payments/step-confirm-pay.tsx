@@ -1,6 +1,6 @@
 'use client';
 
-import type { FxQuoteResponse, PaymentMethodResponse } from '@stripe-app/shared';
+import type { FxQuoteResponse, PaymentMethodResponse } from '@/lib/shared';
 import { useCreatePaymentIntentMutation } from '@/lib/store/payments-api';
 import { PaymentMethodIcon } from '@/components/payment-methods/payment-method-icon';
 import { stripePromise } from '@/lib/stripe';

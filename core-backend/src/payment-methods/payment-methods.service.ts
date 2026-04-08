@@ -10,7 +10,7 @@ import {
   getAvailablePaymentMethodDefinitionsForCountry,
   getStripeSetupIntentTypesForCountry,
   isPaymentMethodTypeAvailableForCountry,
-} from '@stripe-app/shared';
+} from '../shared';
 import { StripePaymentMethodsService } from '../stripe/stripe-payment-methods.service';
 import { StripeCustomersService } from '../stripe/stripe-customers.service';
 import { generateUniqueIdempotencyKey } from '../common/utils/idempotency';

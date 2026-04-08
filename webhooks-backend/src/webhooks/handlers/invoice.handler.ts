@@ -1,6 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 import Stripe from 'stripe';
-import { ChargeStatus } from '@stripe-app/shared';
+import { ChargeStatus } from '../../shared';
 import { EmailService } from '../../email/email.service';
 import { OracleService } from '../../database/oracle.service';
 

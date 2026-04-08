@@ -1,5 +1,5 @@
 import { apiSlice } from './api';
-import type { UserResponse, LoginRequest, RegisterRequest } from '@stripe-app/shared';
+import type { UserResponse, LoginRequest, RegisterRequest } from '@/lib/shared';
 
 export const authApi = apiSlice.injectEndpoints({
   endpoints: (builder) => ({

@@ -1,5 +1,5 @@
 import { PaymentMethodIcon } from './payment-method-icon';
-import type { AvailablePaymentMethodType } from '@stripe-app/shared';
+import type { AvailablePaymentMethodType } from '@/lib/shared';
 
 interface AvailableTypesGridProps {
   types: AvailablePaymentMethodType[];

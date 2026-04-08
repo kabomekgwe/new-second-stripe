@@ -5,7 +5,7 @@ import {
   BillingSubscriptionStatus,
   UsageCharge,
   User,
-} from '@stripe-app/shared';
+} from '../shared';
 import type { DbConnection } from '../database/oracle.service';
 import { randomUUID } from 'crypto';
 import { OracleService } from '../database/oracle.service';

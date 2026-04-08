@@ -1,4 +1,4 @@
-import { ChargeStatus } from '@stripe-app/shared';
+import { ChargeStatus } from '../../shared';
 import type Stripe from 'stripe';
 import { InvoiceHandler } from './invoice.handler';
 

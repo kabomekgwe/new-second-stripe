@@ -1,5 +1,5 @@
 import { Injectable } from '@nestjs/common';
-import { User } from '@stripe-app/shared';
+import { User } from '../shared';
 import { StripeCustomersService } from '../stripe/stripe-customers.service';
 import { CreateUserDto } from './dto/create-user.dto';
 import { generateIdempotencyKey } from '../common/utils/idempotency';

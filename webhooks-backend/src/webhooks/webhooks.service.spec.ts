@@ -1,7 +1,7 @@
 import {
   STRIPE_WEBHOOK_EVENTS,
   WebhookEventStatus,
-} from '@stripe-app/shared';
+} from '../shared';
 import type Stripe from 'stripe';
 import { WebhooksService } from './webhooks.service';
 

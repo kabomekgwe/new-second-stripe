@@ -8,7 +8,7 @@ import {
   Req,
 } from '@nestjs/common';
 import { Request } from 'express';
-import { User } from '@stripe-app/shared';
+import { User } from '../shared';
 import { AuthenticatedGuard } from '../auth/guards/authenticated.guard';
 import { PaymentsService } from './payments.service';
 import { FxQuoteDto } from './dto/fx-quote.dto';

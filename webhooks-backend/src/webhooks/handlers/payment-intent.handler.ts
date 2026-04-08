@@ -3,7 +3,7 @@ import Stripe from 'stripe';
 import {
   PaymentStatus,
   ChargeStatus,
-} from '@stripe-app/shared';
+} from '../../shared';
 import { OracleService } from '../../database/oracle.service';
 
 @Injectable()

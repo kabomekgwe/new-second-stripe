@@ -4,7 +4,7 @@ import { useState, useEffect, useMemo } from 'react';
 import {
   SUPPORTED_SAVED_PAYMENT_METHOD_TYPES,
   type FxQuoteResponse,
-} from '@stripe-app/shared';
+} from '@/lib/shared';
 import { useGetFxQuoteMutation } from '@/lib/store/payments-api';
 import {
   useGetPaymentMethodsQuery,

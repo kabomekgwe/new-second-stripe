@@ -3,7 +3,7 @@ import type {
   PaymentMethodResponse,
   AvailablePaymentMethodType,
   SetupIntentResponse,
-} from '@stripe-app/shared';
+} from '@/lib/shared';
 
 export const paymentMethodsApi = apiSlice.injectEndpoints({
   endpoints: (builder) => ({

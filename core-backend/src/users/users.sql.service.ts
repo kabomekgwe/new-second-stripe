@@ -1,5 +1,5 @@
 import { ConflictException, Injectable } from '@nestjs/common';
-import { User, getCurrencyForCountry } from '@stripe-app/shared';
+import { User, getCurrencyForCountry } from '../shared';
 import type { DbConnection } from '../database/oracle.service';
 import { randomUUID } from 'crypto';
 import * as bcrypt from 'bcrypt';

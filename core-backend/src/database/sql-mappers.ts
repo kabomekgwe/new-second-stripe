@@ -6,8 +6,8 @@ import {
   PaymentStatus,
   UsageCharge,
   User,
-} from '@stripe-app/shared';
-import { BillingSubscriptionStatus } from '@stripe-app/shared';
+} from '../shared';
+import { BillingSubscriptionStatus } from '../shared';
 
 type NullableString = string | null;
 type NullableNumber = number | string | null;

@@ -4,7 +4,7 @@ import { createContext, useContext, useEffect, useMemo } from 'react';
 import { useRouter, usePathname } from 'next/navigation';
 import Link from 'next/link';
 import { useGetMeQuery, useLogoutMutation } from '@/lib/store/auth-api';
-import type { UserResponse } from '@stripe-app/shared';
+import type { UserResponse } from '@/lib/shared';
 
 // Auth context to share user data with children
 const AuthContext = createContext<UserResponse | null>(null);
@@ -15,7 +15,7 @@ export const useAuth = () => {
 };
 
 // Re-export UserResponse for children
-export type { UserResponse } from '@stripe-app/shared';
+export type { UserResponse } from '@/lib/shared';
 
 const NAV_LINKS = [
   { href: '/', label: 'Dashboard' },

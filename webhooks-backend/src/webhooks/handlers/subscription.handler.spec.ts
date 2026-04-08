@@ -1,4 +1,4 @@
-import { BillingSubscriptionStatus } from '@stripe-app/shared';
+import { BillingSubscriptionStatus } from '../../shared';
 import type Stripe from 'stripe';
 import { SubscriptionHandler } from './subscription.handler';
 

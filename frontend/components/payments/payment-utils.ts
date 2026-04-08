@@ -1,4 +1,4 @@
-import type { PaymentMethodResponse } from '@stripe-app/shared';
+import type { PaymentMethodResponse } from '@/lib/shared';
 
 export function formatPence(pence: number): string {
   return (pence / 100).toFixed(2);

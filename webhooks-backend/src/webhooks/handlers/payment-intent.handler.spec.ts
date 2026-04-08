@@ -1,5 +1,5 @@
 import type Stripe from 'stripe';
-import { ChargeStatus, PaymentStatus } from '@stripe-app/shared';
+import { ChargeStatus, PaymentStatus } from '../../shared';
 import { PaymentIntentHandler } from './payment-intent.handler';
 
 describe('PaymentIntentHandler', () => {

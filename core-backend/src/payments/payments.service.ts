@@ -14,7 +14,7 @@ import {
   PaymentMethod,
   SUPPORTED_SAVED_PAYMENT_METHOD_TYPES,
   isPaymentMethodTypeAvailableForCountry,
-} from '@stripe-app/shared';
+} from '../shared';
 import { StripePaymentIntentsService } from '../stripe/stripe-payment-intents.service';
 import { generateUniqueIdempotencyKey } from '../common/utils/idempotency';
 import { CreatePaymentDto } from './dto/create-payment.dto';

@@ -9,7 +9,7 @@ import { SubscriptionHandler } from './subscription.handler';
 import { SetupIntentHandler } from './setup-intent.handler';
 import { PaymentMethodHandler } from './payment-method.handler';
 import { CheckoutSessionHandler } from './checkout-session.handler';
-import { WebhookEventStatus } from '@stripe-app/shared';
+import { WebhookEventStatus } from '../../shared';
 
 describe('Webhook Failure and Retry Logic', () => {
   let service: WebhooksService;

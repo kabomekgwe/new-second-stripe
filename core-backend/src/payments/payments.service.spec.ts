@@ -1,5 +1,5 @@
 import { BadRequestException } from '@nestjs/common';
-import { PaymentStatus } from '@stripe-app/shared';
+import { PaymentStatus } from '../shared';
 import { PaymentsService } from './payments.service';
 
 describe('PaymentsService', () => {
