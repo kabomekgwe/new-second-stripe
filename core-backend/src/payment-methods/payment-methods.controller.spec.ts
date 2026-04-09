@@ -56,24 +56,6 @@ describe('PaymentMethodsController', () => {
     });
   });
 
-  describe('GET /payment-methods/available', () => {
-    it('returns available payment method types', async () => {
-      const mockTypes = [{ type: 'card', label: 'Card', category: 'Card' }];
-      paymentMethodsService.getAvailablePaymentMethodTypes.mockResolvedValue(
-        mockTypes,
-      );
-
-      const result = await controller.getAvailablePaymentMethodTypes(
-        mockRequest({ id: 'user_1' }),
-      );
-
-      expect(result).toEqual(mockTypes);
-      expect(paymentMethodsService.getAvailablePaymentMethodTypes).toHaveBeenCalledWith(
-        'user_1',
-      );
-    });
-  });
-
   describe('POST /payment-methods/setup-intent', () => {
     it('creates setup intent and returns client secret', async () => {
       paymentMethodsService.createSetupIntent.mockResolvedValue({
@@ -86,7 +68,7 @@ describe('PaymentMethodsController', () => {
 
       expect(result).toEqual({ clientSecret: 'seti_secret_123' });
       expect(paymentMethodsService.createSetupIntent).toHaveBeenCalledWith(
-        'user_1',
+        expect.objectContaining({ id: 'user_1' }),
       );
     });
   });
@@ -107,7 +89,7 @@ describe('PaymentMethodsController', () => {
 
       expect(result).toEqual(mockPM);
       expect(paymentMethodsService.syncAndSavePaymentMethod).toHaveBeenCalledWith(
-        'user_1',
+        expect.objectContaining({ id: 'user_1' }),
         'pm_123456',
       );
     });
@@ -188,7 +170,7 @@ describe('PaymentMethodsController', () => {
 
       expect(result).toEqual(mockPM);
       expect(paymentMethodsService.setDefault).toHaveBeenCalledWith(
-        'user_1',
+        expect.objectContaining({ id: 'user_1' }),
         'pm_db_1',
       );
     });
@@ -204,7 +186,7 @@ describe('PaymentMethodsController', () => {
       );
 
       expect(paymentMethodsService.removePaymentMethod).toHaveBeenCalledWith(
-        'user_1',
+        expect.objectContaining({ id: 'user_1' }),
         'pm_db_1',
       );
     });

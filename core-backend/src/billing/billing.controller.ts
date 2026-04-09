@@ -10,7 +10,7 @@ import {
 import { ConfigService } from '@nestjs/config';
 import { IsInt, Min, IsOptional, IsString } from 'class-validator';
 import { Request } from 'express';
-import { User, UsageCharge, UsageChargeResponse } from '../shared';
+import { SafeUser, UsageCharge, UsageChargeResponse } from '../shared';
 import { AuthenticatedGuard } from '../auth/guards/authenticated.guard';
 import { BillingService } from './billing.service';
 
@@ -54,13 +54,13 @@ export class BillingController {
 
   @Get()
   async getUserCharges(@Req() req: Request) {
-    const charges = await this.billingService.getUserCharges((req.user as User).id);
+    const charges = await this.billingService.getUserCharges((req.user as SafeUser).id);
     return charges.map(toUsageChargeResponse);
   }
 
   @Get('current-fee')
   getCurrentFee(@Req() req: Request) {
-    const user = req.user as User;
+    const user = req.user as SafeUser;
     return {
       monthlyManagementFee: user.monthlyManagementFee,
       accountValue: user.accountValue,
@@ -72,7 +72,7 @@ export class BillingController {
     @Req() req: Request,
     @Body() dto: ChargeUserDto,
   ) {
-    const user = req.user as User;
+    const user = req.user as SafeUser;
     return this.billingService.chargeUser(user, dto.amount, dto.description);
   }
 
@@ -85,7 +85,7 @@ export class BillingController {
     if (this.configService.get('NODE_ENV') === 'production') {
       throw new ForbiddenException('Not available in production');
     }
-    const user = req.user as User;
+    const user = req.user as SafeUser;
     const fee = Number(user.monthlyManagementFee ?? 0);
     if (fee <= 0) {
       return { message: 'User has no monthlyManagementFee set' };

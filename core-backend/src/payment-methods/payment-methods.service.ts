@@ -4,7 +4,7 @@ import {
   BadRequestException,
 } from '@nestjs/common';
 import type Stripe from 'stripe';
-import type { PaymentMethod, User } from '../shared';
+import type { PaymentMethod, SafeUser } from '../shared';
 import { StripePaymentMethodsService } from '../stripe/stripe-payment-methods.service';
 import { StripeCustomersService } from '../stripe/stripe-customers.service';
 import { generateUniqueIdempotencyKey } from '../common/utils/idempotency';
@@ -29,8 +29,7 @@ export class PaymentMethodsService {
     private readonly stripeCustomers: StripeCustomersService,
   ) {}
 
-  async cancelActiveSetupIntents(userId: string): Promise<void> {
-    const user = await this.findUserOrFail(userId);
+  async cancelActiveSetupIntents(user: SafeUser): Promise<void> {
     if (!user.stripeCustomerId) return;
 
     const existing = await this.findActiveSetupIntent(user.stripeCustomerId);
@@ -44,12 +43,12 @@ export class PaymentMethodsService {
   }
 
   async createSetupIntent(
-    userId: string,
+    user: SafeUser,
   ): Promise<{ clientSecret: string }> {
-    const user = await this.ensureStripeCustomer(userId);
+    const ensured = await this.ensureStripeCustomer(user);
 
     const existingSetupIntent = await this.findActiveSetupIntent(
-      user.stripeCustomerId!,
+      ensured.stripeCustomerId!,
     );
     if (existingSetupIntent?.client_secret) {
       return { clientSecret: existingSetupIntent.client_secret };
@@ -57,12 +56,12 @@ export class PaymentMethodsService {
 
     const idempotencyKey = generateUniqueIdempotencyKey(
       'setup_intent',
-      userId,
+      user.id,
       Date.now().toString(),
     );
 
     const setupIntent = await this.stripePaymentMethods.createSetupIntent(
-      user.stripeCustomerId!,
+      ensured.stripeCustomerId!,
       idempotencyKey,
     );
 
@@ -70,31 +69,29 @@ export class PaymentMethodsService {
   }
 
   async setDefault(
-    userId: string,
+    user: SafeUser,
     paymentMethodId: string,
   ): Promise<PaymentMethod> {
-    const pm = await this.findPaymentMethodOrFail(paymentMethodId, userId);
-    const user = await this.findUserOrFail(userId);
+    const pm = await this.findPaymentMethodOrFail(paymentMethodId, user.id);
 
-    await this.paymentMethodsSql.setDefault(userId, pm.stripePaymentMethodId);
+    await this.paymentMethodsSql.setDefault(user.id, pm.stripePaymentMethodId);
     await this.syncStripeDefaultPaymentMethod(
       user.stripeCustomerId,
       pm.stripePaymentMethodId,
     );
     await this.usersSql.updateDefaultPaymentMethod(
-      userId,
+      user.id,
       pm.stripePaymentMethodId,
     );
 
-    return this.findPaymentMethodOrFail(paymentMethodId, userId);
+    return this.findPaymentMethodOrFail(paymentMethodId, user.id);
   }
 
   async removePaymentMethod(
-    userId: string,
+    user: SafeUser,
     paymentMethodId: string,
   ): Promise<void> {
-    const pm = await this.findPaymentMethodOrFail(paymentMethodId, userId);
-    const user = await this.findUserOrFail(userId);
+    const pm = await this.findPaymentMethodOrFail(paymentMethodId, user.id);
 
     const idempotencyKey = generateUniqueIdempotencyKey(
       'detach_pm',
@@ -107,8 +104,8 @@ export class PaymentMethodsService {
     );
 
     if (pm.isDefault) {
-      await this.paymentMethodsSql.setDefault(userId, null);
-      await this.usersSql.updateDefaultPaymentMethod(userId, null);
+      await this.paymentMethodsSql.setDefault(user.id, null);
+      await this.usersSql.updateDefaultPaymentMethod(user.id, null);
       await this.syncStripeDefaultPaymentMethod(user.stripeCustomerId, null);
     }
 
@@ -117,13 +114,12 @@ export class PaymentMethodsService {
 
   async syncPaymentMethodFromStripe(
     stripePaymentMethod: Stripe.PaymentMethod,
-    userId: string,
+    user: SafeUser,
   ): Promise<PaymentMethod> {
     const card = stripePaymentMethod.card;
-    const user = await this.findUserOrFail(userId);
 
     return this.paymentMethodsSql.upsertFromStripe({
-      userId,
+      userId: user.id,
       stripePaymentMethodId: stripePaymentMethod.id,
       type: stripePaymentMethod.type,
       last4: card?.last4 ?? null,
@@ -140,14 +136,14 @@ export class PaymentMethodsService {
    * Called by frontend after successful setup to ensure immediate availability.
    */
   async syncAndSavePaymentMethod(
-    userId: string,
+    user: SafeUser,
     stripePaymentMethodId: string,
   ): Promise<PaymentMethod> {
     if (!stripePaymentMethodId) {
       throw new BadRequestException('stripePaymentMethodId is required');
     }
 
-    const user = await this.ensureStripeCustomer(userId);
+    const ensured = await this.ensureStripeCustomer(user);
     const stripePm = await this.stripePaymentMethods.retrievePaymentMethod(
       stripePaymentMethodId,
     );
@@ -162,7 +158,7 @@ export class PaymentMethodsService {
       );
     }
 
-    if (stripeCustomerId !== user.stripeCustomerId) {
+    if (stripeCustomerId !== ensured.stripeCustomerId) {
       throw new BadRequestException(
         'Payment method does not belong to the authenticated user',
       );
@@ -170,7 +166,7 @@ export class PaymentMethodsService {
 
     const savedPm = await this.paymentMethodsSql.upsertFromStripeTX(
       {
-        userId,
+        userId: user.id,
         stripePaymentMethodId: stripePm.id,
         type: stripePm.type,
         last4: stripePm.card?.last4 ?? null,
@@ -178,14 +174,14 @@ export class PaymentMethodsService {
         expiryMonth: stripePm.card?.exp_month ?? null,
         expiryYear: stripePm.card?.exp_year ?? null,
         metadata: stripePm.metadata ?? null,
-        isDefault: user.defaultPaymentMethodId === stripePm.id,
+        isDefault: ensured.defaultPaymentMethodId === stripePm.id,
       },
-      user.defaultPaymentMethodId,
+      ensured.defaultPaymentMethodId,
     );
 
-    if (!user.defaultPaymentMethodId) {
+    if (!ensured.defaultPaymentMethodId) {
       await this.syncStripeDefaultPaymentMethod(
-        user.stripeCustomerId!,
+        ensured.stripeCustomerId!,
         stripePm.id,
       );
     }
@@ -193,16 +189,7 @@ export class PaymentMethodsService {
     return savedPm;
   }
 
-  private async findUserOrFail(userId: string): Promise<User> {
-    const user = await this.usersSql.findById(userId);
-    if (!user) {
-      throw new NotFoundException('User not found');
-    }
-    return user;
-  }
-
-  private async ensureStripeCustomer(userId: string): Promise<User> {
-    const user = await this.findUserOrFail(userId);
+  private async ensureStripeCustomer(user: SafeUser): Promise<SafeUser> {
     if (user.stripeCustomerId) {
       const customerExists = await this.stripeCustomers.customerExists(
         user.stripeCustomerId,
@@ -214,22 +201,22 @@ export class PaymentMethodsService {
 
     const idempotencyKey = generateUniqueIdempotencyKey(
       'create_customer',
-      userId,
+      user.id,
     );
     const customer = await this.stripeCustomers.createCustomer(
       {
         email: user.email,
         name: user.name ?? undefined,
-        metadata: { userId },
+        metadata: { userId: user.id },
         address: { country: user.country },
       },
       idempotencyKey,
     );
 
     return (await this.usersSql.updateStripeCustomerAndReturn(
-      userId,
+      user.id,
       customer.id,
-    )) as User;
+    )) as SafeUser;
   }
 
   private async findActiveSetupIntent(

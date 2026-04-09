@@ -12,7 +12,7 @@ import {
 } from '@nestjs/common';
 import { Request } from 'express';
 import { IsString, Matches } from 'class-validator';
-import { User } from '../shared';
+import { SafeUser } from '../shared';
 import { AuthenticatedGuard } from '../auth/guards/authenticated.guard';
 import { PaymentMethodsService } from './payment-methods.service';
 
@@ -32,14 +32,14 @@ export class PaymentMethodsController {
   @Get()
   getUserPaymentMethods(@Req() req: Request) {
     return this.paymentMethodsService.getUserPaymentMethods(
-      (req.user as User).id,
+      (req.user as SafeUser).id,
     );
   }
 
   @Post('setup-intent')
   createSetupIntent(@Req() req: Request) {
     return this.paymentMethodsService.createSetupIntent(
-      (req.user as User).id,
+      req.user as SafeUser,
     );
   }
 
@@ -49,7 +49,7 @@ export class PaymentMethodsController {
     @Body() body: SyncPaymentMethodDto,
   ) {
     const pmId = body.stripePaymentMethodId;
-    const userId = (req.user as User).id;
+    const user = req.user as SafeUser;
     this.logger.log(`Syncing payment method ${pmId}`);
 
     if (!pmId) {
@@ -59,7 +59,7 @@ export class PaymentMethodsController {
 
     try {
       const result = await this.paymentMethodsService.syncAndSavePaymentMethod(
-        userId,
+        user,
         pmId,
       );
       this.logger.log(`Successfully synced payment method ${pmId}`);
@@ -74,7 +74,7 @@ export class PaymentMethodsController {
   @Post(':id/default')
   setDefault(@Req() req: Request, @Param('id') id: string) {
     return this.paymentMethodsService.setDefault(
-      (req.user as User).id,
+      req.user as SafeUser,
       id,
     );
   }
@@ -82,7 +82,7 @@ export class PaymentMethodsController {
   @Delete(':id')
   removePaymentMethod(@Req() req: Request, @Param('id') id: string) {
     return this.paymentMethodsService.removePaymentMethod(
-      (req.user as User).id,
+      req.user as SafeUser,
       id,
     );
   }

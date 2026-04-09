@@ -38,10 +38,13 @@ export class AuthService {
     dto: UpdateProfileDto,
   ): Promise<Omit<User, 'password'>> {
     if (dto.country) {
-      await this.paymentMethodsService.cancelActiveSetupIntents(userId);
-      const user = await this.usersService.updateCountry(userId, dto.country);
-      if (!user) throw new NotFoundException('User not found');
-      const { password: _, ...result } = user;
+      const existing = await this.usersService.findById(userId);
+      if (!existing) throw new NotFoundException('User not found');
+      const { password: _p, ...safeUser } = existing;
+      await this.paymentMethodsService.cancelActiveSetupIntents(safeUser);
+      const updated = await this.usersService.updateCountry(userId, dto.country);
+      if (!updated) throw new NotFoundException('User not found');
+      const { password: _, ...result } = updated;
       return result;
     }
     const user = await this.usersService.findById(userId);

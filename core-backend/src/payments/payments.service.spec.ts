@@ -1,5 +1,6 @@
 import { BadRequestException } from '@nestjs/common';
 import { PaymentStatus } from '../shared';
+import type { SafeUser } from '../shared';
 import { PaymentsService } from './payments.service';
 
 describe('PaymentsService', () => {
@@ -10,9 +11,6 @@ describe('PaymentsService', () => {
   };
   const paymentMethodsSql = {
     findByUserId: jest.fn(),
-  };
-  const usersSql = {
-    findById: jest.fn(),
   };
   const stripePaymentIntents = {
     createFxQuote: jest.fn(),
@@ -26,10 +24,23 @@ describe('PaymentsService', () => {
   const service = new PaymentsService(
     paymentsSql as never,
     paymentMethodsSql as never,
-    usersSql as never,
     stripePaymentIntents as never,
     configService as never,
   );
+
+  const mockUser = (overrides = {}) =>
+    ({
+      id: 'user_1',
+      email: 'test@example.com',
+      name: 'Test User',
+      stripeCustomerId: 'cus_123',
+      defaultPaymentMethodId: null,
+      country: 'GB',
+      currency: 'gbp',
+      monthlyManagementFee: null,
+      accountValue: null,
+      ...overrides,
+    }) as SafeUser;
 
   beforeEach(() => {
     jest.clearAllMocks();
@@ -37,12 +48,6 @@ describe('PaymentsService', () => {
 
   describe('createPaymentIntent', () => {
     it('creates a pending payment before client-side confirmation and returns Stripe status', async () => {
-      usersSql.findById.mockResolvedValue({
-        id: 'user_1',
-        stripeCustomerId: 'cus_123',
-        country: 'GB',
-        currency: 'gbp',
-      });
       paymentMethodsSql.findByUserId.mockResolvedValue([
         {
           id: 'pm_db_1',
@@ -61,7 +66,7 @@ describe('PaymentsService', () => {
         status: PaymentStatus.PENDING,
       });
 
-      const result = await service.createPaymentIntent('user_1', {
+      const result = await service.createPaymentIntent(mockUser(), {
         amountGbp: 1250,
         paymentMethodId: 'pm_card_1',
         fxQuoteId: 'fxq_123',
@@ -100,10 +105,6 @@ describe('PaymentsService', () => {
     });
 
     it('rejects unsupported saved payment methods', async () => {
-      usersSql.findById.mockResolvedValue({
-        id: 'user_1',
-        stripeCustomerId: 'cus_123',
-      });
       paymentMethodsSql.findByUserId.mockResolvedValue([
         {
           id: 'pm_db_2',
@@ -114,7 +115,7 @@ describe('PaymentsService', () => {
       ]);
 
       await expect(
-        service.createPaymentIntent('user_1', {
+        service.createPaymentIntent(mockUser(), {
           amountGbp: 1250,
           paymentMethodId: 'pm_sepa_1',
         }),

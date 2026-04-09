@@ -3,6 +3,10 @@ import {
   ChargeStatus,
   PaymentStatus,
 } from './stripe.types';
+import type { User } from '../entities';
+
+export type SafeUser = Omit<User, 'password'>;
+
 // Auth
 export interface RegisterRequest {
   email: string;

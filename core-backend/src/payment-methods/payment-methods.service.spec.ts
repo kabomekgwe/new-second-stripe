@@ -1,5 +1,6 @@
 import { PaymentMethodsService } from './payment-methods.service';
-import { NotFoundException, BadRequestException } from '@nestjs/common';
+import { BadRequestException } from '@nestjs/common';
+import type { SafeUser } from '../shared';
 
 describe('PaymentMethodsService', () => {
   const paymentMethodsSql = {
@@ -36,6 +37,20 @@ describe('PaymentMethodsService', () => {
     stripeCustomers as never,
   );
 
+  const mockUser = (overrides = {}) =>
+    ({
+      id: 'user_1',
+      email: 'test@example.com',
+      name: 'Test User',
+      stripeCustomerId: 'cus_123',
+      defaultPaymentMethodId: null,
+      country: 'GB',
+      currency: 'gbp',
+      monthlyManagementFee: null,
+      accountValue: null,
+      ...overrides,
+    }) as SafeUser;
+
   beforeEach(() => {
     jest.clearAllMocks();
     stripeCustomers.customerExists.mockResolvedValue(true);
@@ -43,11 +58,6 @@ describe('PaymentMethodsService', () => {
 
   describe('createSetupIntent', () => {
     it('reuses an active setup intent instead of creating a new one', async () => {
-      usersSql.findById.mockResolvedValue({
-        id: 'user_1',
-        stripeCustomerId: 'cus_123',
-        country: 'GB',
-      });
       stripePaymentMethods.listSetupIntents.mockResolvedValue({
         data: [
           {
@@ -58,33 +68,26 @@ describe('PaymentMethodsService', () => {
         ],
       });
 
-      const result = await service.createSetupIntent('user_1');
+      const result = await service.createSetupIntent(mockUser());
 
       expect(result).toEqual({ clientSecret: 'seti_secret' });
       expect(stripePaymentMethods.createSetupIntent).not.toHaveBeenCalled();
     });
 
     it('recreates Stripe customer when stored stripeCustomerId no longer exists', async () => {
-      usersSql.findById.mockResolvedValue({
-        id: 'user_1',
-        email: 'test@example.com',
-        name: 'Test User',
-        stripeCustomerId: 'cus_missing',
-        country: 'GB',
-      });
       stripeCustomers.customerExists.mockResolvedValue(false);
       stripeCustomers.createCustomer.mockResolvedValue({ id: 'cus_new' });
-      usersSql.updateStripeCustomerAndReturn.mockResolvedValue({
-        id: 'user_1',
-        stripeCustomerId: 'cus_new',
-        country: 'GB',
-      });
+      usersSql.updateStripeCustomerAndReturn.mockResolvedValue(
+        mockUser({ stripeCustomerId: 'cus_new' }),
+      );
       stripePaymentMethods.listSetupIntents.mockResolvedValue({ data: [] });
       stripePaymentMethods.createSetupIntent.mockResolvedValue({
         client_secret: 'new_secret',
       });
 
-      const result = await service.createSetupIntent('user_1');
+      const result = await service.createSetupIntent(
+        mockUser({ stripeCustomerId: 'cus_missing' }),
+      );
 
       expect(stripeCustomers.customerExists).toHaveBeenCalledWith('cus_missing');
       expect(stripeCustomers.createCustomer).toHaveBeenCalled();
@@ -96,25 +99,18 @@ describe('PaymentMethodsService', () => {
     });
 
     it('creates Stripe customer if user does not have one', async () => {
-      usersSql.findById.mockResolvedValue({
-        id: 'user_1',
-        email: 'test@example.com',
-        name: 'Test User',
-        stripeCustomerId: null,
-        country: 'GB',
-      });
       stripeCustomers.createCustomer.mockResolvedValue({ id: 'cus_new' });
-      usersSql.updateStripeCustomerAndReturn.mockResolvedValue({
-        id: 'user_1',
-        stripeCustomerId: 'cus_new',
-        country: 'GB',
-      });
+      usersSql.updateStripeCustomerAndReturn.mockResolvedValue(
+        mockUser({ stripeCustomerId: 'cus_new' }),
+      );
       stripePaymentMethods.listSetupIntents.mockResolvedValue({ data: [] });
       stripePaymentMethods.createSetupIntent.mockResolvedValue({
         client_secret: 'new_secret',
       });
 
-      const result = await service.createSetupIntent('user_1');
+      const result = await service.createSetupIntent(
+        mockUser({ stripeCustomerId: null }),
+      );
 
       expect(stripeCustomers.createCustomer).toHaveBeenCalledWith(
         {
@@ -131,24 +127,10 @@ describe('PaymentMethodsService', () => {
       );
       expect(result).toEqual({ clientSecret: 'new_secret' });
     });
-
-    it('throws NotFoundException when user does not exist', async () => {
-      usersSql.findById.mockResolvedValue(null);
-
-      await expect(service.createSetupIntent('nonexistent')).rejects.toThrow(
-        NotFoundException,
-      );
-    });
   });
 
   describe('syncAndSavePaymentMethod', () => {
     it('sets as default when user has no default payment method', async () => {
-      usersSql.findById.mockResolvedValue({
-        id: 'user_1',
-        stripeCustomerId: 'cus_123',
-        country: 'GB',
-        defaultPaymentMethodId: null,
-      });
       stripePaymentMethods.retrievePaymentMethod.mockResolvedValue({
         id: 'pm_stripe_1',
         customer: 'cus_123',
@@ -163,7 +145,7 @@ describe('PaymentMethodsService', () => {
       });
 
       const result = await service.syncAndSavePaymentMethod(
-        'user_1',
+        mockUser(),
         'pm_stripe_1',
       );
 
@@ -182,12 +164,6 @@ describe('PaymentMethodsService', () => {
     });
 
     it('does not set as default when user already has default', async () => {
-      usersSql.findById.mockResolvedValue({
-        id: 'user_1',
-        stripeCustomerId: 'cus_123',
-        country: 'GB',
-        defaultPaymentMethodId: 'pm_existing',
-      });
       stripePaymentMethods.retrievePaymentMethod.mockResolvedValue({
         id: 'pm_stripe_2',
         customer: 'cus_123',
@@ -202,7 +178,7 @@ describe('PaymentMethodsService', () => {
       });
 
       const result = await service.syncAndSavePaymentMethod(
-        'user_1',
+        mockUser({ defaultPaymentMethodId: 'pm_existing' }),
         'pm_stripe_2',
       );
 
@@ -218,12 +194,6 @@ describe('PaymentMethodsService', () => {
     });
 
     it('is idempotent - calling sync twice for same PM succeeds', async () => {
-      usersSql.findById.mockResolvedValue({
-        id: 'user_1',
-        stripeCustomerId: 'cus_123',
-        country: 'GB',
-        defaultPaymentMethodId: null,
-      });
       stripePaymentMethods.retrievePaymentMethod.mockResolvedValue({
         id: 'pm_stripe_1',
         customer: 'cus_123',
@@ -237,14 +207,8 @@ describe('PaymentMethodsService', () => {
         isDefault: true,
       });
 
-      await service.syncAndSavePaymentMethod('user_1', 'pm_stripe_1');
+      await service.syncAndSavePaymentMethod(mockUser(), 'pm_stripe_1');
 
-      usersSql.findById.mockResolvedValue({
-        id: 'user_1',
-        stripeCustomerId: 'cus_123',
-        country: 'GB',
-        defaultPaymentMethodId: 'pm_stripe_1',
-      });
       paymentMethodsSql.upsertFromStripeTX.mockResolvedValue({
         id: 'pm_db_1',
         stripePaymentMethodId: 'pm_stripe_1',
@@ -252,7 +216,7 @@ describe('PaymentMethodsService', () => {
       });
 
       const result = await service.syncAndSavePaymentMethod(
-        'user_1',
+        mockUser({ defaultPaymentMethodId: 'pm_stripe_1' }),
         'pm_stripe_1',
       );
 
@@ -260,20 +224,10 @@ describe('PaymentMethodsService', () => {
     });
 
     it('creates Stripe customer if user does not have one', async () => {
-      usersSql.findById.mockResolvedValue({
-        id: 'user_1',
-        email: 'test@example.com',
-        stripeCustomerId: null,
-        defaultPaymentMethodId: null,
-        country: 'GB',
-      });
       stripeCustomers.createCustomer.mockResolvedValue({ id: 'cus_new' });
-      usersSql.updateStripeCustomerAndReturn.mockResolvedValue({
-        id: 'user_1',
-        stripeCustomerId: 'cus_new',
-        country: 'GB',
-        defaultPaymentMethodId: null,
-      });
+      usersSql.updateStripeCustomerAndReturn.mockResolvedValue(
+        mockUser({ stripeCustomerId: 'cus_new' }),
+      );
       stripePaymentMethods.retrievePaymentMethod.mockResolvedValue({
         id: 'pm_stripe_1',
         customer: 'cus_new',
@@ -288,7 +242,7 @@ describe('PaymentMethodsService', () => {
       });
 
       const result = await service.syncAndSavePaymentMethod(
-        'user_1',
+        mockUser({ stripeCustomerId: null, email: 'test@example.com' }),
         'pm_stripe_1',
       );
 
@@ -300,11 +254,6 @@ describe('PaymentMethodsService', () => {
     });
 
     it('rejects payment methods attached to another Stripe customer', async () => {
-      usersSql.findById.mockResolvedValue({
-        id: 'user_1',
-        stripeCustomerId: 'cus_123',
-        defaultPaymentMethodId: null,
-      });
       stripePaymentMethods.retrievePaymentMethod.mockResolvedValue({
         id: 'pm_foreign',
         customer: 'cus_other',
@@ -314,18 +263,13 @@ describe('PaymentMethodsService', () => {
       });
 
       await expect(
-        service.syncAndSavePaymentMethod('user_1', 'pm_foreign'),
+        service.syncAndSavePaymentMethod(mockUser(), 'pm_foreign'),
       ).rejects.toThrow(BadRequestException);
 
       expect(paymentMethodsSql.upsertFromStripeTX).not.toHaveBeenCalled();
     });
 
     it('rejects unattached payment methods', async () => {
-      usersSql.findById.mockResolvedValue({
-        id: 'user_1',
-        stripeCustomerId: 'cus_123',
-        defaultPaymentMethodId: null,
-      });
       stripePaymentMethods.retrievePaymentMethod.mockResolvedValue({
         id: 'pm_unattached',
         customer: null,
@@ -335,7 +279,7 @@ describe('PaymentMethodsService', () => {
       });
 
       await expect(
-        service.syncAndSavePaymentMethod('user_1', 'pm_unattached'),
+        service.syncAndSavePaymentMethod(mockUser(), 'pm_unattached'),
       ).rejects.toThrow(BadRequestException);
 
       expect(paymentMethodsSql.upsertFromStripeTX).not.toHaveBeenCalled();
@@ -349,10 +293,6 @@ describe('PaymentMethodsService', () => {
         userId: 'user_1',
         stripePaymentMethodId: 'pm_stripe_1',
       });
-      usersSql.findById.mockResolvedValue({
-        id: 'user_1',
-        stripeCustomerId: 'cus_123',
-      });
       paymentMethodsSql.findById.mockResolvedValueOnce({
         id: 'pm_db_1',
         userId: 'user_1',
@@ -360,7 +300,7 @@ describe('PaymentMethodsService', () => {
         isDefault: true,
       });
 
-      const result = await service.setDefault('user_1', 'pm_db_1');
+      const result = await service.setDefault(mockUser(), 'pm_db_1');
 
       expect(paymentMethodsSql.setDefault).toHaveBeenCalledWith(
         'user_1',
@@ -384,8 +324,8 @@ describe('PaymentMethodsService', () => {
     it('throws NotFoundException when payment method does not exist', async () => {
       paymentMethodsSql.findById.mockResolvedValue(null);
 
-      await expect(service.setDefault('user_1', 'nonexistent')).rejects.toThrow(
-        NotFoundException,
+      await expect(service.setDefault(mockUser(), 'nonexistent')).rejects.toThrow(
+        'Payment method not found',
       );
     });
   });
@@ -398,15 +338,11 @@ describe('PaymentMethodsService', () => {
         stripePaymentMethodId: 'pm_stripe_1',
         isDefault: true,
       });
-      usersSql.findById.mockResolvedValue({
-        id: 'user_1',
-        stripeCustomerId: 'cus_123',
-      });
       stripePaymentMethods.detachPaymentMethod.mockResolvedValue({
         id: 'pm_stripe_1',
       });
 
-      await service.removePaymentMethod('user_1', 'pm_db_1');
+      await service.removePaymentMethod(mockUser(), 'pm_db_1');
 
       expect(stripePaymentMethods.detachPaymentMethod).toHaveBeenCalledWith(
         'pm_stripe_1',
@@ -431,15 +367,11 @@ describe('PaymentMethodsService', () => {
         stripePaymentMethodId: 'pm_stripe_1',
         isDefault: false,
       });
-      usersSql.findById.mockResolvedValue({
-        id: 'user_1',
-        stripeCustomerId: 'cus_123',
-      });
       stripePaymentMethods.detachPaymentMethod.mockResolvedValue({
         id: 'pm_stripe_1',
       });
 
-      await service.removePaymentMethod('user_1', 'pm_db_1');
+      await service.removePaymentMethod(mockUser(), 'pm_db_1');
 
       expect(paymentMethodsSql.setDefault).not.toHaveBeenCalled();
       expect(usersSql.updateDefaultPaymentMethod).not.toHaveBeenCalled();
@@ -450,8 +382,8 @@ describe('PaymentMethodsService', () => {
       paymentMethodsSql.findById.mockResolvedValue(null);
 
       await expect(
-        service.removePaymentMethod('user_1', 'nonexistent'),
-      ).rejects.toThrow(NotFoundException);
+        service.removePaymentMethod(mockUser(), 'nonexistent'),
+      ).rejects.toThrow('Payment method not found');
     });
   });
 

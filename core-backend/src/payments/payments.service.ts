@@ -6,7 +6,7 @@ import {
 import { ConfigService } from '@nestjs/config';
 import {
   Payment,
-  User,
+  SafeUser,
   PaymentStatus,
   FxQuoteResponse,
   CreatePaymentResponse,
@@ -19,7 +19,6 @@ import { generateUniqueIdempotencyKey } from '../common/utils/idempotency';
 import { CreatePaymentDto } from './dto/create-payment.dto';
 import { CreateCheckoutSessionDto } from './dto/create-checkout-session.dto';
 import { PaymentMethodsSqlService } from '../payment-methods/payment-methods.sql.service';
-import { UsersSqlService } from '../users/users.sql.service';
 import { PaymentsSqlService } from './payments.sql.service';
 
 @Injectable()
@@ -32,7 +31,6 @@ export class PaymentsService {
   constructor(
     private readonly paymentsSql: PaymentsSqlService,
     private readonly paymentMethodsSql: PaymentMethodsSqlService,
-    private readonly usersSql: UsersSqlService,
     private readonly stripePaymentIntents: StripePaymentIntentsService,
     private readonly configService: ConfigService,
   ) {
@@ -43,11 +41,9 @@ export class PaymentsService {
   }
 
   async getFxQuote(
-    userId: string,
+    user: SafeUser,
     amountGbp: number,
   ): Promise<FxQuoteResponse> {
-    const user = await this.findUserOrFail(userId);
-
     if (user.currency.toLowerCase() === 'gbp') {
       return {
         fromAmount: amountGbp,
@@ -61,7 +57,7 @@ export class PaymentsService {
 
     const idempotencyKey = generateUniqueIdempotencyKey(
       'fx_quote',
-      userId,
+      user.id,
       String(amountGbp),
       user.currency,
     );
@@ -87,12 +83,11 @@ export class PaymentsService {
   }
 
   async createPaymentIntent(
-    userId: string,
+    user: SafeUser,
     dto: CreatePaymentDto,
   ): Promise<CreatePaymentResponse> {
-    const user = await this.findUserOrFail(userId);
     const paymentMethod = await this.findSupportedPaymentMethodOrFail(
-      userId,
+      user.id,
       dto.paymentMethodId,
     );
 
@@ -104,7 +99,7 @@ export class PaymentsService {
 
     const idempotencyKey = generateUniqueIdempotencyKey(
       'payment',
-      userId,
+      user.id,
       String(dto.amountGbp),
       dto.paymentMethodId,
     );
@@ -117,7 +112,7 @@ export class PaymentsService {
         payment_method_types: [...SUPPORTED_SAVED_PAYMENT_METHOD_TYPES],
         confirmation_method: 'automatic',
         metadata: {
-          userId,
+          userId: user.id,
           type: 'user_payment',
           idempotencyKey,
         },
@@ -127,7 +122,7 @@ export class PaymentsService {
     );
 
     await this.paymentsSql.create({
-      userId,
+      userId: user.id,
       stripePaymentIntentId: paymentIntent.id,
       stripeCheckoutSessionId: null,
       amountGbp: dto.amountGbp,
@@ -149,11 +144,9 @@ export class PaymentsService {
   }
 
   async createCheckoutSession(
-    userId: string,
+    user: SafeUser,
     dto: CreateCheckoutSessionDto,
   ): Promise<CreateCheckoutSessionResponse> {
-    const user = await this.findUserOrFail(userId);
-
     if (!user.stripeCustomerId) {
       throw new BadRequestException(
         'User does not have a Stripe customer account',
@@ -162,7 +155,7 @@ export class PaymentsService {
 
     const idempotencyKey = generateUniqueIdempotencyKey(
       'checkout',
-      userId,
+      user.id,
       String(dto.amountGbp),
     );
 
@@ -185,13 +178,13 @@ export class PaymentsService {
         ],
         adaptive_pricing: { enabled: true },
         return_url: `${this.frontendUrl}/payments?session_id={CHECKOUT_SESSION_ID}`,
-        metadata: { userId, type: 'user_payment' },
+        metadata: { userId: user.id, type: 'user_payment' },
       },
       idempotencyKey,
     );
 
     await this.paymentsSql.create({
-      userId,
+      userId: user.id,
       stripePaymentIntentId: null,
       stripeCheckoutSessionId: session.id,
       amountGbp: dto.amountGbp,
@@ -220,14 +213,6 @@ export class PaymentsService {
       throw new NotFoundException('Payment not found');
     }
     return payment;
-  }
-
-  private async findUserOrFail(userId: string): Promise<User> {
-    const user = await this.usersSql.findById(userId);
-    if (!user) {
-      throw new NotFoundException('User not found');
-    }
-    return user;
   }
 
   private async findSupportedPaymentMethodOrFail(

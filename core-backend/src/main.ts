@@ -50,7 +50,7 @@ async function bootstrap() {
   });
 
   app.useGlobalPipes(new ValidationPipe({ transform: true, whitelist: true }));
-  app.useGlobalFilters(new StripeExceptionFilter(), new GlobalExceptionFilter());
+  app.useGlobalFilters(new GlobalExceptionFilter(), new StripeExceptionFilter());
   app.useGlobalInterceptors(
     new ClassSerializerInterceptor(app.get(Reflector)),
     new LoggingInterceptor(),

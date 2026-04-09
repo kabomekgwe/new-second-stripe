@@ -5,7 +5,7 @@ import {
   BillingSubscriptionStatus,
   ChargeStatus,
   UsageCharge,
-  User,
+  SafeUser,
 } from '../shared';
 import Stripe from 'stripe';
 import { StripeBillingService } from '../stripe/stripe-billing.service';
@@ -44,7 +44,7 @@ export class BillingService {
   }
 
   async chargeUser(
-    user: User,
+    user: SafeUser,
     amount: number,
     description?: string,
   ): Promise<UsageCharge> {
@@ -94,7 +94,7 @@ export class BillingService {
   }
 
   private async addInvoiceItemForUser(
-    user: User,
+    user: SafeUser,
     amount: number,
     description?: string,
   ): Promise<UsageCharge> {
@@ -137,7 +137,7 @@ export class BillingService {
   }
 
   private async ensureBillingSubscription(
-    user: User,
+    user: SafeUser,
   ): Promise<BillingSubscription> {
     const local = await this.billingSql.findBillingSubscriptionByUserId(
       user.id,

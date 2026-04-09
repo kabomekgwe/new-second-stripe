@@ -1,7 +1,7 @@
 import {
   BillingSubscriptionStatus,
   ChargeStatus,
-  User,
+  SafeUser,
 } from '../shared';
 import { ConfigService } from '@nestjs/config';
 import { BillingService, getNextBillingAnchor } from './billing.service';
@@ -131,7 +131,7 @@ describe('BillingService', () => {
 
   afterEach(() => jest.useRealTimers());
 
-  function buildUser(overrides: Partial<User> = {}): User {
+  function buildUser(overrides: Partial<SafeUser> = {}): SafeUser {
     return {
       id: 'user_1',
       email: 'user@example.com',
@@ -141,7 +141,7 @@ describe('BillingService', () => {
       monthlyManagementFee: 1250,
       accountValue: 0,
       ...overrides,
-    } as User;
+    } as SafeUser;
   }
 
   function buildStripeSubscription(overrides: Record<string, unknown> = {}) {

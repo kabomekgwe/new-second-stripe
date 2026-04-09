@@ -8,7 +8,7 @@ import {
   Req,
 } from '@nestjs/common';
 import { Request } from 'express';
-import { User } from '../shared';
+import { SafeUser } from '../shared';
 import { AuthenticatedGuard } from '../auth/guards/authenticated.guard';
 import { PaymentsService } from './payments.service';
 import { FxQuoteDto } from './dto/fx-quote.dto';
@@ -22,35 +22,26 @@ export class PaymentsController {
 
   @Post('fx-quote')
   getFxQuote(@Req() req: Request, @Body() dto: FxQuoteDto) {
-    return this.paymentsService.getFxQuote(
-      (req.user as User).id,
-      dto.amountGbp,
-    );
+    return this.paymentsService.getFxQuote(req.user as SafeUser, dto.amountGbp);
   }
 
   @Post('create-intent')
   createPaymentIntent(@Req() req: Request, @Body() dto: CreatePaymentDto) {
-    return this.paymentsService.createPaymentIntent(
-      (req.user as User).id,
-      dto,
-    );
+    return this.paymentsService.createPaymentIntent(req.user as SafeUser, dto);
   }
 
   @Post('create-checkout-session')
   createCheckoutSession(@Req() req: Request, @Body() dto: CreateCheckoutSessionDto) {
-    return this.paymentsService.createCheckoutSession(
-      (req.user as User).id,
-      dto,
-    );
+    return this.paymentsService.createCheckoutSession(req.user as SafeUser, dto);
   }
 
   @Get()
   getPayments(@Req() req: Request) {
-    return this.paymentsService.getPayments((req.user as User).id);
+    return this.paymentsService.getPayments((req.user as SafeUser).id);
   }
 
   @Get(':id')
   getPaymentById(@Req() req: Request, @Param('id') id: string) {
-    return this.paymentsService.getPaymentById((req.user as User).id, id);
+    return this.paymentsService.getPaymentById((req.user as SafeUser).id, id);
   }
 }
