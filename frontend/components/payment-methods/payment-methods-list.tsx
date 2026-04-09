@@ -4,23 +4,16 @@ import { useState } from 'react';
 import Link from 'next/link';
 import {
   useGetPaymentMethodsQuery,
-  useGetAvailableMethodTypesQuery,
   useSetDefaultMethodMutation,
   useDeleteMethodMutation,
 } from '@/lib/store/payment-methods-api';
-import { useGetMeQuery } from '@/lib/store/auth-api';
 import { PaymentMethodCard } from './payment-method-card';
-import { AvailableTypesGrid } from './available-types-grid';
 
 export function PaymentMethodsList() {
-  const { data: savedMethods, isLoading: methodsLoading, isError: methodsError } = useGetPaymentMethodsQuery();
-  const { data: availableTypes, isLoading: typesLoading } = useGetAvailableMethodTypesQuery();
-  const { data: user } = useGetMeQuery();
+  const { data: savedMethods, isLoading, isError } = useGetPaymentMethodsQuery();
   const [setDefaultMethod] = useSetDefaultMethodMutation();
   const [deleteMethod] = useDeleteMethodMutation();
   const [error, setError] = useState('');
-
-  const loading = methodsLoading || typesLoading;
 
   async function handleSetDefault(id: string) {
     try {
@@ -38,19 +31,18 @@ export function PaymentMethodsList() {
     }
   }
 
-  if (loading) {
+  if (isLoading) {
     return <div className="text-gray-500">Loading payment methods...</div>;
   }
 
   return (
     <div className="space-y-8">
-      {(error || methodsError) && (
+      {(error || isError) && (
         <div className="rounded-md bg-red-50 px-4 py-3 text-sm text-red-700">
           {error || 'Failed to load payment methods'}
         </div>
       )}
 
-      {/* Saved Payment Methods */}
       <section>
         <div className="flex items-center justify-between">
           <h2 className="text-lg font-medium text-gray-900">Your Payment Methods</h2>
@@ -79,12 +71,6 @@ export function PaymentMethodsList() {
           </div>
         )}
       </section>
-
-      {/* Available Payment Method Types */}
-      <AvailableTypesGrid
-        types={availableTypes || []}
-        countryCode={user?.country ?? null}
-      />
     </div>
   );
 }

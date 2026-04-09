@@ -13,7 +13,6 @@ import {
   CreateCheckoutSessionResponse,
   PaymentMethod,
   SUPPORTED_SAVED_PAYMENT_METHOD_TYPES,
-  isPaymentMethodTypeAvailableForCountry,
 } from '../shared';
 import { StripePaymentIntentsService } from '../stripe/stripe-payment-intents.service';
 import { generateUniqueIdempotencyKey } from '../common/utils/idempotency';
@@ -100,12 +99,6 @@ export class PaymentsService {
     if (!user.stripeCustomerId) {
       throw new BadRequestException(
         'User does not have a Stripe customer account',
-      );
-    }
-
-    if (!isPaymentMethodTypeAvailableForCountry(paymentMethod.type, user.country)) {
-      throw new BadRequestException(
-        `Payment method type ${paymentMethod.type} is not available in ${user.country}`,
       );
     }
 

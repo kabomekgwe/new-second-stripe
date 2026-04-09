@@ -3,14 +3,8 @@ import {
   NotFoundException,
   BadRequestException,
 } from '@nestjs/common';
-import Stripe from 'stripe';
-import {
-  PaymentMethod,
-  User,
-  getAvailablePaymentMethodDefinitionsForCountry,
-  getStripeSetupIntentTypesForCountry,
-  isPaymentMethodTypeAvailableForCountry,
-} from '../shared';
+import type Stripe from 'stripe';
+import type { PaymentMethod, User } from '../shared';
 import { StripePaymentMethodsService } from '../stripe/stripe-payment-methods.service';
 import { StripeCustomersService } from '../stripe/stripe-customers.service';
 import { generateUniqueIdempotencyKey } from '../common/utils/idempotency';
@@ -27,6 +21,7 @@ export class PaymentMethodsService {
     'requires_payment_method',
     'processing',
   ]);
+
   constructor(
     private readonly paymentMethodsSql: PaymentMethodsSqlService,
     private readonly usersSql: UsersSqlService,
@@ -48,20 +43,6 @@ export class PaymentMethodsService {
     return this.paymentMethodsSql.findByUserId(userId);
   }
 
-  async getAvailablePaymentMethodTypes(
-    userId: string,
-  ): Promise<{ type: string; label: string; category: string }[]> {
-    const user = await this.findUserOrFail(userId);
-
-    return getAvailablePaymentMethodDefinitionsForCountry(user.country).map(
-      (entry) => ({
-        type: entry.type,
-        label: entry.label,
-        category: entry.category,
-      }),
-    );
-  }
-
   async createSetupIntent(
     userId: string,
   ): Promise<{ clientSecret: string }> {
@@ -80,12 +61,9 @@ export class PaymentMethodsService {
       Date.now().toString(),
     );
 
-    const paymentMethodTypes = getStripeSetupIntentTypesForCountry(user.country);
-    const setupIntent = await this.createSetupIntentWithFallback(
+    const setupIntent = await this.stripePaymentMethods.createSetupIntent(
       user.stripeCustomerId!,
-      paymentMethodTypes,
       idempotencyKey,
-      userId,
     );
 
     return { clientSecret: setupIntent.client_secret! };
@@ -153,8 +131,7 @@ export class PaymentMethodsService {
       expiryMonth: card?.exp_month ?? null,
       expiryYear: card?.exp_year ?? null,
       metadata: stripePaymentMethod.metadata ?? null,
-      isDefault:
-        user.defaultPaymentMethodId === stripePaymentMethod.id ? true : false,
+      isDefault: user.defaultPaymentMethodId === stripePaymentMethod.id,
     });
   }
 
@@ -177,7 +154,7 @@ export class PaymentMethodsService {
     const stripeCustomerId =
       typeof stripePm.customer === 'string'
         ? stripePm.customer
-        : stripePm.customer?.id ?? null;
+        : (stripePm.customer?.id ?? null);
 
     if (!stripeCustomerId) {
       throw new BadRequestException(
@@ -188,12 +165,6 @@ export class PaymentMethodsService {
     if (stripeCustomerId !== user.stripeCustomerId) {
       throw new BadRequestException(
         'Payment method does not belong to the authenticated user',
-      );
-    }
-
-    if (!isPaymentMethodTypeAvailableForCountry(stripePm.type, user.country)) {
-      throw new BadRequestException(
-        `Payment method type ${stripePm.type} is not available in ${user.country}`,
       );
     }
 
@@ -264,7 +235,8 @@ export class PaymentMethodsService {
   private async findActiveSetupIntent(
     customerId: string,
   ): Promise<Stripe.SetupIntent | null> {
-    const setupIntents = await this.stripePaymentMethods.listSetupIntents(customerId);
+    const setupIntents =
+      await this.stripePaymentMethods.listSetupIntents(customerId);
 
     return (
       setupIntents.data.find((setupIntent) =>
@@ -272,52 +244,6 @@ export class PaymentMethodsService {
           setupIntent.status,
         ),
       ) ?? null
-    );
-  }
-
-  private async createSetupIntentWithFallback(
-    customerId: string,
-    paymentMethodTypes: string[],
-    idempotencyKey: string,
-    userId: string,
-  ): Promise<Stripe.SetupIntent> {
-    try {
-      return await this.stripePaymentMethods.createSetupIntent(
-        customerId,
-        paymentMethodTypes,
-        idempotencyKey,
-      );
-    } catch (error: unknown) {
-      if (
-        this.isStripeInvalidRequestError(error) &&
-        paymentMethodTypes.length > 1 &&
-        paymentMethodTypes.includes('card')
-      ) {
-        const fallbackIdempotencyKey = generateUniqueIdempotencyKey(
-          'setup_intent_fallback',
-          userId,
-          Date.now().toString(),
-        );
-        return this.stripePaymentMethods.createSetupIntent(
-          customerId,
-          ['card'],
-          fallbackIdempotencyKey,
-        );
-      }
-      throw error;
-    }
-  }
-
-  private isStripeInvalidRequestError(error: unknown): boolean {
-    if (error instanceof Stripe.errors.StripeInvalidRequestError) {
-      return true;
-    }
-
-    return (
-      typeof error === 'object' &&
-      error !== null &&
-      'type' in error &&
-      (error as { type?: unknown }).type === 'invalid_request_error'
     );
   }
 

@@ -1,19 +1,11 @@
 import { apiSlice } from './api';
-import type {
-  PaymentMethodResponse,
-  AvailablePaymentMethodType,
-  SetupIntentResponse,
-} from '@/lib/shared';
+import type { PaymentMethodResponse, SetupIntentResponse } from '@/lib/shared';
 
 export const paymentMethodsApi = apiSlice.injectEndpoints({
   endpoints: (builder) => ({
     getPaymentMethods: builder.query<PaymentMethodResponse[], void>({
       query: () => '/payment-methods',
       providesTags: ['PaymentMethods'],
-    }),
-    getAvailableMethodTypes: builder.query<AvailablePaymentMethodType[], void>({
-      query: () => '/payment-methods/available',
-      providesTags: ['AvailableMethods'],
     }),
     createSetupIntent: builder.mutation<SetupIntentResponse, void>({
       query: () => ({ url: '/payment-methods/setup-intent', method: 'POST' }),
@@ -39,7 +31,6 @@ export const paymentMethodsApi = apiSlice.injectEndpoints({
 
 export const {
   useGetPaymentMethodsQuery,
-  useGetAvailableMethodTypesQuery,
   useCreateSetupIntentMutation,
   useSyncPaymentMethodMutation,
   useSetDefaultMethodMutation,

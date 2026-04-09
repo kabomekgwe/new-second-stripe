@@ -8,14 +8,13 @@ export class StripePaymentMethodsService {
 
   createSetupIntent(
     customerId: string,
-    paymentMethodTypes: string[],
     idempotencyKey: string,
   ): Promise<Stripe.SetupIntent> {
     return this.stripe.setupIntents.create(
       {
         customer: customerId,
         usage: 'off_session',
-        payment_method_types: paymentMethodTypes,
+        automatic_payment_methods: { enabled: true },
       },
       { idempotencyKey },
     );
