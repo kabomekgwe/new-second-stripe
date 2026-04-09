@@ -34,6 +34,16 @@ export class PaymentMethodsService {
     private readonly stripeCustomers: StripeCustomersService,
   ) {}
 
+  async cancelActiveSetupIntents(userId: string): Promise<void> {
+    const user = await this.findUserOrFail(userId);
+    if (!user.stripeCustomerId) return;
+
+    const existing = await this.findActiveSetupIntent(user.stripeCustomerId);
+    if (existing) {
+      await this.stripePaymentMethods.cancelSetupIntent(existing.id);
+    }
+  }
+
   async getUserPaymentMethods(userId: string): Promise<PaymentMethod[]> {
     return this.paymentMethodsSql.findByUserId(userId);
   }
@@ -240,6 +250,7 @@ export class PaymentMethodsService {
         email: user.email,
         name: user.name ?? undefined,
         metadata: { userId },
+        address: { country: user.country },
       },
       idempotencyKey,
     );

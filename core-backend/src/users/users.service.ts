@@ -29,6 +29,7 @@ export class UsersService {
           email: dto.email,
           name: dto.name,
           metadata: { userId: user.id },
+          address: { country: dto.country },
         },
         generateIdempotencyKey('create_customer', user.id),
       );
@@ -43,6 +44,16 @@ export class UsersService {
       await this.usersSqlService.deleteById(user.id);
       throw error;
     }
+  }
+
+  async updateCountry(userId: string, country: string): Promise<User | null> {
+    const user = await this.usersSqlService.updateCountry(userId, country);
+    if (user?.stripeCustomerId) {
+      await this.stripeCustomers.updateCustomer(user.stripeCustomerId, {
+        address: { country },
+      });
+    }
+    return user;
   }
 
   async updateStripeCustomerId(

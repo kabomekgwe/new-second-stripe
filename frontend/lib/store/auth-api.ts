@@ -1,5 +1,5 @@
 import { apiSlice } from './api';
-import type { UserResponse, LoginRequest, RegisterRequest } from '@/lib/shared';
+import type { UserResponse, LoginRequest, RegisterRequest, UpdateProfileRequest } from '@/lib/shared';
 
 export const authApi = apiSlice.injectEndpoints({
   endpoints: (builder) => ({
@@ -17,6 +17,10 @@ export const authApi = apiSlice.injectEndpoints({
       query: (body) => ({ url: '/auth/register', method: 'POST', body }),
       invalidatesTags: ['User'],
     }),
+    updateProfile: builder.mutation<UserResponse, UpdateProfileRequest>({
+      query: (body) => ({ url: '/auth/profile', method: 'PATCH', body }),
+      invalidatesTags: ['User'],
+    }),
     logout: builder.mutation<void, void>({
       query: () => ({ url: '/auth/logout', method: 'POST' }),
       onQueryStarted: async (_, { dispatch, queryFulfilled }) => {
@@ -30,4 +34,4 @@ export const authApi = apiSlice.injectEndpoints({
   }),
 });
 
-export const { useGetMeQuery, useLoginMutation, useRegisterMutation, useLogoutMutation } = authApi;
+export const { useGetMeQuery, useLoginMutation, useRegisterMutation, useUpdateProfileMutation, useLogoutMutation } = authApi;

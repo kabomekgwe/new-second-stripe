@@ -18,6 +18,10 @@ export interface LoginRequest {
   password: string;
 }
 
+export interface UpdateProfileRequest {
+  country?: string;
+}
+
 export interface UserResponse {
   id: string;
   email: string;

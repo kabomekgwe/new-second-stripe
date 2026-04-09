@@ -21,6 +21,10 @@ export class StripePaymentMethodsService {
     );
   }
 
+  cancelSetupIntent(setupIntentId: string): Promise<Stripe.SetupIntent> {
+    return this.stripe.setupIntents.cancel(setupIntentId);
+  }
+
   listSetupIntents(
     customerId: string,
     limit = 10,

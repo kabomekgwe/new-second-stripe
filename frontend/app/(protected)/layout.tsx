@@ -22,6 +22,7 @@ const NAV_LINKS = [
   { href: '/payment-methods', label: 'Payment Methods' },
   { href: '/payments', label: 'Make Payment' },
   { href: '/billing', label: 'Billing' },
+  { href: '/profile', label: 'Profile' },
 ];
 
 export default function ProtectedLayout({ children }: { children: React.ReactNode }) {

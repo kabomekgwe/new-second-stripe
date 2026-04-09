@@ -70,6 +70,18 @@ export class UsersSqlService {
     await this.database.query('DELETE FROM USERS WHERE ID = :1', [userId]);
   }
 
+  async updateCountry(
+    userId: string,
+    country: string,
+  ): Promise<User | null> {
+    const currency = getCurrencyForCountry(country);
+    await this.database.query(
+      'UPDATE USERS SET COUNTRY = :1, CURRENCY = :2, UPDATED_AT = SYSTIMESTAMP WHERE ID = :3',
+      [country, currency, userId],
+    );
+    return this.findById(userId);
+  }
+
   async updateDefaultPaymentMethod(
     userId: string,
     paymentMethodId: string | null,

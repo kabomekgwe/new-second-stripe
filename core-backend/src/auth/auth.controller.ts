@@ -2,6 +2,7 @@ import {
   Controller,
   Post,
   Get,
+  Patch,
   Body,
   UseGuards,
   Req,
@@ -13,6 +14,7 @@ import { AuthService } from './auth.service';
 import { LocalAuthGuard } from './guards/local-auth.guard';
 import { AuthenticatedGuard } from './guards/authenticated.guard';
 import { CreateUserDto } from '../users/dto/create-user.dto';
+import { UpdateProfileDto } from '../users/dto/update-profile.dto';
 import { Request } from 'express';
 
 @Controller('auth')
@@ -47,5 +49,12 @@ export class AuthController {
   @UseGuards(AuthenticatedGuard)
   me(@Req() req: Request) {
     return req.user;
+  }
+
+  @Patch('profile')
+  @UseGuards(AuthenticatedGuard)
+  async updateProfile(@Req() req: Request, @Body() dto: UpdateProfileDto) {
+    const user = req.user as { id: string };
+    return this.authService.updateProfile(user.id, dto);
   }
 }

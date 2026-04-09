@@ -123,6 +123,7 @@ describe('PaymentMethodsService', () => {
           email: 'test@example.com',
           name: 'Test User',
           metadata: { userId: 'user_1' },
+          address: { country: 'GB' },
         },
         expect.any(String),
       );
@@ -402,6 +403,7 @@ describe('PaymentMethodsService', () => {
         email: 'test@example.com',
         stripeCustomerId: null,
         defaultPaymentMethodId: null,
+        country: 'GB',
       });
       stripeCustomers.createCustomer.mockResolvedValue({ id: 'cus_new' });
       usersSql.updateStripeCustomerAndReturn.mockResolvedValue({
@@ -428,7 +430,10 @@ describe('PaymentMethodsService', () => {
         'pm_stripe_1',
       );
 
-      expect(stripeCustomers.createCustomer).toHaveBeenCalled();
+      expect(stripeCustomers.createCustomer).toHaveBeenCalledWith(
+        expect.objectContaining({ address: { country: 'GB' } }),
+        expect.any(String),
+      );
       expect(result.stripePaymentMethodId).toBe('pm_stripe_1');
     });
 

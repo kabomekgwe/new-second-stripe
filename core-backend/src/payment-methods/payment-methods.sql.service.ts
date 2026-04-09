@@ -7,6 +7,46 @@ import { mapPaymentMethod } from '../database/sql-mappers';
 
 const boolToNum = (v?: boolean): number => v ? 1 : 0;
 
+/** Builds the bind params array for a MERGE upsert (19 positional binds). */
+function buildMergeParams(
+  data: Partial<PaymentMethod> & { userId: string; stripePaymentMethodId: string; type: string },
+): unknown[] {
+  const spmId = data.stripePaymentMethodId;
+  const userId = data.userId;
+  const mType = data.type;
+  const isDefault = boolToNum(data.isDefault ?? false);
+  const last4 = data.last4 ?? null;
+  const brand = data.brand ?? null;
+  const expMonth = data.expiryMonth ?? null;
+  const expYear = data.expiryYear ?? null;
+  const meta = data.metadata ? JSON.stringify(data.metadata) : null;
+  const newId = randomUUID();
+
+  // :1-:9 for USING + UPDATE SET, :10-:19 for INSERT VALUES (all unique)
+  return [
+    spmId, userId, mType, isDefault, last4, brand, expMonth, expYear, meta,
+    newId, userId, spmId, mType, isDefault, last4, brand, expMonth, expYear, meta,
+  ];
+}
+
+const MERGE_SQL = `MERGE INTO STRIPE_PAYMENT_METHODS t
+       USING (SELECT :1 AS STRIPE_PAYMENT_METHOD_ID FROM DUAL) s
+       ON (t.STRIPE_PAYMENT_METHOD_ID = s.STRIPE_PAYMENT_METHOD_ID)
+       WHEN MATCHED THEN UPDATE SET
+         USER_ID = :2,
+         METHOD_TYPE = :3,
+         IS_DEFAULT = :4,
+         LAST4 = :5,
+         BRAND = :6,
+         EXPIRY_MONTH = :7,
+         EXPIRY_YEAR = :8,
+         METADATA = :9,
+         UPDATED_AT = SYSTIMESTAMP
+       WHEN NOT MATCHED THEN INSERT (
+         ID, USER_ID, STRIPE_PAYMENT_METHOD_ID, METHOD_TYPE, IS_DEFAULT,
+         LAST4, BRAND, EXPIRY_MONTH, EXPIRY_YEAR, METADATA
+       ) VALUES (:10, :11, :12, :13, :14, :15, :16, :17, :18, :19)`;
+
 @Injectable()
 export class PaymentMethodsSqlService {
   constructor(private readonly database: OracleService) {}
@@ -51,37 +91,7 @@ export class PaymentMethodsSqlService {
       type: string;
     },
   ): Promise<PaymentMethod> {
-    await this.database.query(
-      `MERGE INTO STRIPE_PAYMENT_METHODS t
-       USING (SELECT :1 AS STRIPE_PAYMENT_METHOD_ID FROM DUAL) s
-       ON (t.STRIPE_PAYMENT_METHOD_ID = s.STRIPE_PAYMENT_METHOD_ID)
-       WHEN MATCHED THEN UPDATE SET
-         USER_ID = :2,
-         METHOD_TYPE = :3,
-         IS_DEFAULT = :4,
-         LAST4 = :5,
-         BRAND = :6,
-         EXPIRY_MONTH = :7,
-         EXPIRY_YEAR = :8,
-         METADATA = :9,
-         UPDATED_AT = SYSTIMESTAMP
-       WHEN NOT MATCHED THEN INSERT (
-         ID, USER_ID, STRIPE_PAYMENT_METHOD_ID, METHOD_TYPE, IS_DEFAULT,
-         LAST4, BRAND, EXPIRY_MONTH, EXPIRY_YEAR, METADATA
-       ) VALUES (:10, :2, :1, :3, :4, :5, :6, :7, :8, :9)`,
-      [
-        data.stripePaymentMethodId,
-        data.userId,
-        data.type,
-        boolToNum(data.isDefault ?? false),
-        data.last4 ?? null,
-        data.brand ?? null,
-        data.expiryMonth ?? null,
-        data.expiryYear ?? null,
-        data.metadata ? JSON.stringify(data.metadata) : null,
-        randomUUID(),
-      ],
-    );
+    await this.database.query(MERGE_SQL, buildMergeParams(data));
 
     const result = await this.database.query(
       'SELECT * FROM STRIPE_PAYMENT_METHODS WHERE STRIPE_PAYMENT_METHOD_ID = :1',
@@ -99,38 +109,7 @@ export class PaymentMethodsSqlService {
     currentDefaultId: string | null,
   ): Promise<PaymentMethod> {
     const result = await this.database.transaction(async (connection: DbConnection) => {
-      await this.database.query(
-        `MERGE INTO STRIPE_PAYMENT_METHODS t
-         USING (SELECT :1 AS STRIPE_PAYMENT_METHOD_ID FROM DUAL) s
-         ON (t.STRIPE_PAYMENT_METHOD_ID = s.STRIPE_PAYMENT_METHOD_ID)
-         WHEN MATCHED THEN UPDATE SET
-           USER_ID = :2,
-           METHOD_TYPE = :3,
-           IS_DEFAULT = :4,
-           LAST4 = :5,
-           BRAND = :6,
-           EXPIRY_MONTH = :7,
-           EXPIRY_YEAR = :8,
-           METADATA = :9,
-           UPDATED_AT = SYSTIMESTAMP
-         WHEN NOT MATCHED THEN INSERT (
-           ID, USER_ID, STRIPE_PAYMENT_METHOD_ID, METHOD_TYPE, IS_DEFAULT,
-           LAST4, BRAND, EXPIRY_MONTH, EXPIRY_YEAR, METADATA
-         ) VALUES (:10, :2, :1, :3, :4, :5, :6, :7, :8, :9)`,
-        [
-          data.stripePaymentMethodId,
-          data.userId,
-          data.type,
-          boolToNum(data.isDefault ?? false),
-          data.last4 ?? null,
-          data.brand ?? null,
-          data.expiryMonth ?? null,
-          data.expiryYear ?? null,
-          data.metadata ? JSON.stringify(data.metadata) : null,
-          randomUUID(),
-        ],
-        connection,
-      );
+      await this.database.query(MERGE_SQL, buildMergeParams(data), connection);
 
       const selectResult = await this.database.query(
         'SELECT * FROM STRIPE_PAYMENT_METHODS WHERE STRIPE_PAYMENT_METHOD_ID = :1',
@@ -147,7 +126,7 @@ export class PaymentMethodsSqlService {
         );
         await this.database.query(
           'UPDATE STRIPE_PAYMENT_METHODS SET IS_DEFAULT = 1 WHERE ID = :1',
-          [pm.id],
+          [pm.ID],
           connection,
         );
         await this.database.query(
@@ -155,7 +134,7 @@ export class PaymentMethodsSqlService {
           [data.stripePaymentMethodId, data.userId],
           connection,
         );
-        pm.isDefault = true;
+        pm.IS_DEFAULT = 1;
       }
 
       return pm;

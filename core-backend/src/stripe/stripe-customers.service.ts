@@ -28,6 +28,13 @@ export class StripeCustomersService {
     return this.stripe.customers.create(params, { idempotencyKey });
   }
 
+  updateCustomer(
+    customerId: string,
+    params: Stripe.CustomerUpdateParams,
+  ): Promise<Stripe.Customer> {
+    return this.stripe.customers.update(customerId, params);
+  }
+
   updateDefaultPaymentMethod(
     customerId: string,
     paymentMethodId: string | null,
