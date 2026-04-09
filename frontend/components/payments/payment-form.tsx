@@ -131,6 +131,7 @@ export function PaymentForm() {
             quote={fxQuote}
             quoteError={quoteError}
             isQuoteLoading={isQuoteLoading}
+            onAmountChange={setAmountGbp}
             onNext={(amount) => {
               setAmountGbp(amount);
               setStep('method');

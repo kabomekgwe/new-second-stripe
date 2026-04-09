@@ -135,13 +135,18 @@ export function SetupForm({ userEmail, userName, userCountry }: SetupFormProps) 
       type: 'tabs',
       defaultCollapsed: false,
     },
-    fields: {
+    defaultValues: {
       billingDetails: {
-        name: 'never',
-        email: 'never',
-        phone: 'auto',
-        address: 'auto',
+        name: userName ?? '',
+        email: userEmail,
       },
+    },
+    fields: {
+      billingDetails: 'auto',
+    },
+    wallets: {
+      applePay: 'never',
+      googlePay: 'never',
     },
     terms: {
       card: 'never',

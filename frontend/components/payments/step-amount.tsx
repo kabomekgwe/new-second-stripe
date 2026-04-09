@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import type { FxQuoteResponse } from '@/lib/shared';
 import { formatPence, formatCurrency } from './payment-utils';
 
@@ -9,12 +9,14 @@ export function StepAmount({
   quote,
   quoteError,
   isQuoteLoading,
+  onAmountChange,
   onNext,
 }: {
   initialAmountGbp: number;
   quote: FxQuoteResponse | null;
   quoteError: string;
   isQuoteLoading: boolean;
+  onAmountChange: (amountPence: number) => void;
   onNext: (amountGbp: number) => void;
 }) {
   const [inputValue, setInputValue] = useState(
@@ -22,6 +24,10 @@ export function StepAmount({
   );
 
   const penceValue = Math.round(parseFloat(inputValue || '0') * 100);
+
+  useEffect(() => {
+    onAmountChange(penceValue);
+  }, [penceValue, onAmountChange]);
   const isValid = penceValue > 0 && !isNaN(penceValue);
 
   return (
