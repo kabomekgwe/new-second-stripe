@@ -27,8 +27,9 @@ export class StripePaymentIntentsService {
       '/v1/fx_quotes',
       {
         'from_currencies[]': params.from_currency,
-        to_currency: 'gbp',
-        lock_duration: 'none',
+        to_currency: params.to_currency,
+        from_amount: params.from_amount,
+        lock_duration: params.lock_duration,
       },
       { idempotencyKey },
     );

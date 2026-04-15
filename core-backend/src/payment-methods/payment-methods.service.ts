@@ -5,6 +5,7 @@ import {
 } from '@nestjs/common';
 import type Stripe from 'stripe';
 import type { PaymentMethod, SafeUser } from '../shared';
+import { getPaymentMethodTypesForCountry } from '../shared';
 import { StripePaymentMethodsService } from '../stripe/stripe-payment-methods.service';
 import { StripeCustomersService } from '../stripe/stripe-customers.service';
 import { generateUniqueIdempotencyKey } from '../common/utils/idempotency';
@@ -60,9 +61,12 @@ export class PaymentMethodsService {
       Date.now().toString(),
     );
 
+    const paymentMethodTypes = getPaymentMethodTypesForCountry(ensured.country);
+
     const setupIntent = await this.stripePaymentMethods.createSetupIntent(
       ensured.stripeCustomerId!,
       idempotencyKey,
+      paymentMethodTypes,
     );
 
     return { clientSecret: setupIntent.client_secret! };

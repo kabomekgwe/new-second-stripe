@@ -1,20 +1,40 @@
 import { Inject, Injectable } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import Stripe from 'stripe';
 import { STRIPE_CLIENT } from './stripe-client.token';
 
 @Injectable()
 export class StripePaymentMethodsService {
-  constructor(@Inject(STRIPE_CLIENT) private readonly stripe: Stripe) {}
+  private readonly paymentMethodMode: 'auto' | 'explicit';
+
+  constructor(
+    @Inject(STRIPE_CLIENT) private readonly stripe: Stripe,
+    private readonly configService: ConfigService,
+  ) {
+    this.paymentMethodMode =
+      this.configService.get<string>('STRIPE_PAYMENT_METHOD_MODE', 'auto') ===
+      'explicit'
+        ? 'explicit'
+        : 'auto';
+  }
 
   createSetupIntent(
     customerId: string,
     idempotencyKey: string,
+    paymentMethodTypes?: string[],
   ): Promise<Stripe.SetupIntent> {
+    const useExplicit =
+      this.paymentMethodMode === 'explicit' &&
+      paymentMethodTypes &&
+      paymentMethodTypes.length > 0;
+
     return this.stripe.setupIntents.create(
       {
         customer: customerId,
         usage: 'off_session',
-        automatic_payment_methods: { enabled: true },
+        ...(useExplicit
+          ? { payment_method_types: paymentMethodTypes }
+          : { automatic_payment_methods: { enabled: true } }),
       },
       { idempotencyKey },
     );
