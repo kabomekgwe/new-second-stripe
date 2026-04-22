@@ -1,0 +1,951 @@
+# =====================================================================
+# NESTJS 11 BACKEND — CURSOR RULES
+# =====================================================================
+# Stack: NestJS 11, Oracle DB (oracledb), Stripe SDK 20, Passport.js,
+#        Redis sessions, class-validator, helmet, throttler
+# This is a STANDALONE REPO. The frontend is a separate repository.
+# CORS origin is configured via FRONTEND_URL environment variable.
+# =====================================================================
+#
+# This project has a history of over-engineering. These rules are
+# NON-NEGOTIABLE. They override any tendency to "improve" code by
+# adding abstraction layers, service wrappers, guard chains, or
+# any pattern that increases indirection without proportional
+# clarity gain.
+# =====================================================================
+
+
+## ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+## SECTION 1: UNIVERSAL PRINCIPLES — APPLIES TO EVERYTHING
+## ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+### Simplicity Is the Default
+Every line of code must justify its existence. When in doubt, leave it out.
+The simplest solution that works correctly TODAY beats the "flexible" solution
+that might work tomorrow.
+
+### The Rule of Three
+Do NOT extract shared code until you see the SAME logic in THREE places.
+1st use → Write it inline. 2nd use → Write it inline again. 3rd use → Extract.
+Applies to: functions, components, hooks, services, types, constants, patterns.
+
+### No Code Without a Reason
+Before writing ANY code: What problem does this solve? Who needs this right
+now? What is the SIMPLEST way to solve it? If you cannot answer all three,
+do not write the code.
+
+### Boy Scout Rule — Always
+When you touch a file, leave it cleaner: delete unused imports, remove
+commented-out code, flatten nesting (max 2 levels), fix misleading names,
+inline single-use abstractions, fix barrel imports. Do NOT leave TODOs for
+cleanup. Clean it now.
+
+### Delete > Deprecate
+Never deprecate code with a comment. Delete it. It is in git.
+Dead code is not documentation. It is a trap.
+
+### Universal Anti-Patterns
+- Wrapper functions: `const log = (msg) => logger.info(msg)` → just call `logger.info(msg)`
+- Wrapper classes: `class Config { get(key) { return process.env[key]; } }` → `process.env.KEY`
+- Premature interfaces: `interface IPaymentService` with 1 implementation → just the class
+- Over-nesting: 4+ levels → flat early returns
+- Feature flags without features: `const ENABLE = true; if (ENABLE)` → just write the code
+- Barrel exports: `export * from './types'` → import from source files
+- Dead code: if nobody calls it, delete it
+
+
+## ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+## SECTION 2: ZERO TOLERANCE RULES — VIOLATION = REWRITE
+## ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+### 1. NO SERVICE THAT JUST CALLS ANOTHER SERVICE
+If your method body is `return this.otherService.method()`, DELETE it.
+The controller calls the data service directly.
+Only add a business service when there is ACTUAL BUSINESS LOGIC.
+
+### 2. NO HELPER FUNCTIONS FOR HELPER FUNCTIONS
+If a function just calls another function, DELETE the wrapper.
+If a function is not called anywhere, DELETE IT.
+
+### 3. NO SYMBOL TOKENS WHEN A STRING SUFFICES
+`Symbol('STRIPE_CLIENT')` → just `'STRIPE_CLIENT'`. Same DI behavior, no extra file.
+
+### 4. NO PREMATURE ABSTRACTION (Rule of Three)
+No abstract base classes, generic repositories, or interface hierarchies
+until you have 3 concrete implementations.
+
+### 5. NO BARREL EXPORTS
+Import from the actual source file. Never from index.ts re-exports.
+
+### 6. NO OVERLAPPING DIRECTORIES
+shared/ = data shapes (types, constants, entities)
+common/ = NestJS constructs (filters, interceptors, guards)
+If used by 1-2 modules → PUT IT IN THAT MODULE
+
+### 7. NO DEEPLY NESTED LOGIC
+Maximum 2 levels of nesting. Flatten with early returns.
+
+
+## ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+## SECTION 3: DESIGN PRINCIPLES (KISS, DRY, YAGNI, TDD)
+## ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+### KISS — No Pattern Without a Problem
+Use NestJS built-in constructs as-is. Do NOT wrap them.
+Direct DB query > repository class > abstract repository > interface.
+
+Decision Framework:
+| You are about to... | Ask yourself | Action |
+|---|---|---|
+| Create a new service | Has real logic beyond delegation? | If no, controller calls data service directly |
+| Create a new module | Is this a bounded context? | If 1-2 files, keep in parent module |
+| Create a custom guard | Can existing guard + decorator do this? | Use built-ins first |
+| Create a custom decorator | Can you use @UseGuards, @Throttle? | Use NestJS built-ins |
+| Create a custom pipe | Can class-validator handle it? | Use class-validator |
+| Create an abstract class | 3+ implementations? | If 1, no abstract class |
+| Create a SqlService | 3+ methods with real queries? | If 1-2, use OracleService directly |
+| Add a file to common/ | Used by 3+ modules? | If 1-2, keep in the module |
+
+### DRY — Don't Duplicate Knowledge, Not Lines
+- DRY applies: SQL queries same table, type definitions, validation rules
+- DRY does NOT apply: similar controllers, similar modules, similar SQL on different tables
+
+### YAGNI — Build for Today
+- Do NOT add TypeORM (raw SQL via OracleService works)
+- Do NOT add a repository layer (OracleService IS the data access layer)
+- Do NOT add a domain model that mirrors the entity
+- Do NOT add microservices, CQRS, or event sourcing
+- Do NOT add caching without measuring a slow query
+
+### TDD — Red, Green, Refactor
+1. RED: Failing test
+2. GREEN: Minimum code to pass
+3. REFACTOR: Simplify. No new features.
+
+
+## ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+## SECTION 4: FRONTEND API CONTRACT (Separate Repository)
+## ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+The frontend (Next.js) is a SEPARATE repository. Communication is via HTTP API.
+
+### Response Shapes
+- This backend is the SOURCE OF TRUTH for all API response shapes
+- Frontend mirrors our types with a comment: `// Mirrors backend api.types`
+- When we change a response shape, file a corresponding issue on the frontend repo
+- Do NOT create a shared npm package — the repos are separate
+- All responses should be JSON. Use consistent error format.
+
+### Error Response Format
+All error responses MUST follow this shape (enforced by GlobalExceptionFilter):
+```json
+{ "statusCode": 400, "message": ["Validation error message"] }
+```
+- Use NestJS built-in exceptions: NotFoundException, BadRequestException, etc.
+- The GlobalExceptionFilter catches and formats ALL exceptions into this shape.
+- Do NOT create custom exception classes that return a different shape.
+- Do NOT wrap errors "for consistency" — the filter handles consistency.
+
+### CORS
+- Origin: FRONTEND_URL env var (default: http://localhost:3000)
+- Credentials: true (required for session cookies)
+- Do NOT add wildcard (*) in production
+
+### Security Contract
+- Session cookies: httpOnly, sameSite=lax, secure in production, 7-day maxAge
+- CSRF: double-submit cookie pattern (x-csrf-token header)
+- Rate limiting: 100/min global (ThrottlerGuard), 5/min on auth (@Throttle)
+- Helmet: CSP configured for Stripe.js compatibility
+- Do NOT add endpoints that bypass auth guards
+- Do NOT add CORS wildcard in production
+
+
+## ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+## SECTION 5: NESTJS 11 — MODULE ARCHITECTURE
+## ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+### Module Organization
+
+```
+src/
+  app.module.ts           ← Root: imports all feature modules + globals
+  main.ts                 ← Bootstrap: helmet, CORS, pipes, filters, session
+
+  auth/                   ← Authentication feature
+    auth.module.ts
+    auth.controller.ts     ← register, login, logout, me, profile
+    auth.service.ts        ← register, login, profile update logic
+    local.strategy.ts      ← Passport local strategy
+    session.serializer.ts  ← Passport session serialize/deserialize
+    guards/
+      authenticated.guard.ts  ← isAuthenticated check
+      local-auth.guard.ts     ← Login with session regeneration
+    dto/
+
+  payment-methods/        ← Payment methods feature
+    payment-methods.module.ts
+    payment-methods.controller.ts
+    payment-methods.service.ts
+    payment-methods.sql.service.ts
+
+  payments/                ← Payments feature
+    payments.module.ts
+    payments.controller.ts
+    payments.service.ts
+    payments.sql.service.ts
+    dto/
+
+  billing/                ← Billing feature
+    billing.module.ts
+    billing.controller.ts
+    billing.service.ts
+    billing.sql.service.ts
+    billing.scheduler.ts
+
+  stripe/                 ← Stripe SDK thin wrapper (GLOBAL module)
+    stripe.module.ts
+    stripe-client.provider.ts
+    stripe-payment-intents.service.ts
+    stripe-payment-methods.service.ts
+    stripe-customers.service.ts
+    stripe-billing.service.ts
+    stripe-webhooks.service.ts
+
+  users/                  ← User data feature
+    users.module.ts
+    users.service.ts
+    users.sql.service.ts
+    dto/
+
+  database/               ← DB connection (GLOBAL module)
+    database.module.ts
+    oracle.service.ts
+    sql-mappers.ts
+    migrations.ts
+
+  csrf/                   ← CSRF protection
+    csrf.module.ts
+
+  config/                 ← Configuration factories
+    session.config.ts
+    csrf.config.ts
+
+  shared/                 ← Cross-module data definitions
+    types/                ← TypeScript interfaces
+    constants/            ← Shared constants
+    entities/             ← DB entity definitions
+
+  common/                 ← Cross-cutting NestJS constructs
+    filters/              ← Exception filters
+    interceptors/         ← Request/response interceptors
+    guards/               ← Global guards (ThrottlerGuard)
+    utils/                ← ONLY functions used by 3+ modules
+```
+
+### Module Rules
+1. Feature modules are self-contained: own controller, service, SQL service, DTOs
+2. Global modules (DatabaseModule, StripeModule): @Global(), registered in AppModule
+3. NO cross-feature imports between feature modules. Communicate via shared types and DB.
+   AUTH exception: AuthModule imports UsersModule — acceptable. Do NOT extend this pattern.
+4. Export ONLY what other modules need. Services, not internal details.
+5. Do NOT create shared service modules. Extract to shared/ types/constants.
+
+### Circular Dependencies
+1. FIRST: restructure to eliminate (extract shared types, move code)
+2. LAST RESORT: forwardRef(). This is a code smell. Document WHY.
+
+
+## ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+## SECTION 6: REQUEST LIFECYCLE — UNDERSTAND THE ORDER
+## ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+```
+1.  Middleware (express-session, passport, CSRF, cookie-parser)
+2.  Global Guards (ThrottlerGuard, AuthenticatedGuard if applied)
+3.  Controller-level Guards
+4.  Route-level Guards
+5.  Global Interceptors (LoggingInterceptor, ClassSerializerInterceptor)
+6.  Controller-level Interceptors
+7.  Route-level Interceptors
+8.  Global Pipes (ValidationPipe)
+9.  Controller-level Pipes
+10. Route-level Pipes
+11. Route Parameter Pipes (@ParseIntPipe, custom)
+12. Controller Method
+13. Service Method
+14. Interceptor after-logic (tap, map)
+15. Exception Filters (StripeExceptionFilter, GlobalExceptionFilter)
+16. Response
+```
+
+Do NOT duplicate logic at multiple lifecycle stages:
+- Auth check → Guards (not middleware, not interceptor)
+- Validation → Pipes (class-validator, not manual controller checks)
+- Logging → Interceptors (not middleware, not decorator)
+- Error formatting → Filters (not try/catch in controller)
+- Rate limiting → ThrottlerGuard (global, already configured)
+
+
+## ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+## SECTION 7: CONTROLLERS — THIN, DECLARATIVE, CONSISTENT
+## ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+- Controllers are THIN: receive request, call service, return response
+- NO business logic, NO SQL queries, NO data transformation in controllers
+- ONE controller per feature module
+
+### Decorator Pattern
+
+```ts
+@Controller('payments')
+@UseGuards(AuthenticatedGuard)  // Controller-level for ALL routes
+export class PaymentsController {
+  @Get()
+  async getPayments(@Req() req: Request) {
+    return this.paymentsService.getPayments((req.user as SafeUser).id);
+  }
+
+  @Post()
+  async createPayment(@Req() req: Request, @Body() dto: CreatePaymentDto) {
+    return this.paymentsService.createPayment(req.user as SafeUser, dto);
+  }
+}
+```
+
+- @UseGuards(AuthenticatedGuard) at controller level when ALL routes need auth
+- @Throttle() on specific routes needing custom rate limits
+- @HttpCode(HttpStatus.OK) for POST routes returning 200 (like login)
+- @Body() with a validated DTO class. NEVER raw objects.
+- Access user via `@Req() req: Request` and `req.user as SafeUser`.
+  Do NOT create a custom @User() decorator until 3+ routes need it.
+
+### BANNED Controller Patterns
+- Business logic or transformation in controller
+- Manual validation in controller (use DTOs)
+- Multiple controllers in one module (split to separate modules)
+
+
+## ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+## SECTION 8: SERVICES — LOGIC LIVES HERE
+## ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+### When a Service IS Justified
+- Business rule validation beyond DTO validation
+- Orchestration of multiple SqlService/external API calls
+- Computation and data transformation
+- Stripe API calls combined with DB persistence
+
+### When a Service is NOT Justified
+- Every method is `return this.sql.method()` → USE SqlService directly
+- One method has logic, five are pass-through → inline pass-throughs.
+  Controller calls sql directly for simple-read endpoints.
+
+### Constructor Injection (ALWAYS)
+```ts
+constructor(private readonly service: SomeService) {} // GOOD
+```
+Only use @Inject() for custom token providers (STRIPE_CLIENT) or circular deps
+(with forwardRef() as last resort).
+
+
+## ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+## SECTION 9: DATA ACCESS — ORACLESERVICE
+## ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+### OracleService Pattern (FOLLOW THIS)
+
+The project uses raw SQL via OracleService. This IS the data access layer.
+Do NOT add a repository pattern on top.
+
+```ts
+@Injectable()
+export class PaymentsSqlService {
+  constructor(private readonly database: OracleService) {}
+
+  async findByUserId(userId: string): Promise<Payment[]> {
+    const result = await this.database.query(
+      'SELECT * FROM STRIPE_PAYMENTS WHERE USER_ID = :1 ORDER BY CREATED_AT DESC',
+      [userId],
+    );
+    return result.rows.map(mapPayment);
+  }
+}
+```
+
+RULES:
+- One SqlService per feature module
+- SqlService returns mapped domain objects, not raw rows
+- Always use mapXxx() from database/sql-mappers.ts
+- Use bind parameters (:1, :2) — NEVER string interpolation
+- Use MERGE INTO for idempotent inserts (follow existing pattern)
+- Use FETCH FIRST N ROWS ONLY for pagination/limits
+- Do NOT create generic BaseSqlService<T> — each feature has specific queries
+
+### SQL Mappers
+- Live in database/sql-mappers.ts
+- One mapper per entity (mapUser, mapPayment, etc.)
+- Extract nullableStr/nullableNum ONLY when used 3+ times
+- Entities are plain interfaces, not classes with methods
+
+### Migrations
+- Live in database/migrations.ts
+- Run on bootstrap (OracleService.onModuleInit)
+- Do NOT create external migration tool unless migrations exceed 20 files
+
+### Transactions
+- Use `this.database.transaction(async (conn) => { ... })`
+- Do NOT create UnitOfWork pattern — OracleService handles connections
+- Do NOT wrap OracleService in a "DatabaseService" or "Repository"
+
+
+## ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+## SECTION 10: DTOs & VALIDATION
+## ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+### DTO Standards
+
+```ts
+import { IsEmail, IsString, IsNotEmpty, MinLength, MaxLength, Length } from 'class-validator';
+
+export class CreateUserDto {
+  @IsEmail()
+  @MaxLength(255)
+  email: string;
+
+  @IsString()
+  @IsNotEmpty()
+  @MinLength(8)
+  @MaxLength(128)
+  password: string;
+
+  @IsString()
+  @IsNotEmpty()
+  @MaxLength(100)
+  name: string;
+
+  @IsString()
+  @Length(2, 2)
+  country: string;
+}
+```
+
+RULES:
+- Use class-validator decorators. NEVER manual validation in controllers.
+- DTOs live in the feature's dto/ folder, NOT in a shared dto/ folder.
+- One DTO per route when they differ. Do NOT create base DTOs with inheritance.
+- Do NOT create separate "Response DTOs" — type the controller return.
+- The ValidationPipe is configured globally (transform: true, whitelist: true).
+  Unknown properties are stripped. Do NOT add manual transform logic.
+
+### BANNED DTO Patterns
+- DTO inheritance (repeat fields, it is 2 lines)
+- Separate response DTOs (type the return instead)
+- Custom transform decorators (use custom pipe if 3+ DTOs need it)
+
+
+## ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+## SECTION 11: GUARDS — AUTH & AUTHORIZATION
+## ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+### Current Guards
+- AuthenticatedGuard: checks req.isAuthenticated() && !!req.user
+- LocalAuthGuard: handles login with Passport + session regeneration
+
+RULES:
+- Use AuthenticatedGuard on all protected controllers
+- Do NOT create a RolesGuard until you have 2+ roles with different access
+- Do NOT create custom @CurrentUser() decorator until 3+ routes need it
+- Do NOT put auth logic in middleware when a guard is the right construct
+- Guards return boolean. Throw exception only for different status codes.
+
+
+## ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+## SECTION 12: PIPES — VALIDATION & TRANSFORMATION
+## ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+### Global ValidationPipe (Already Configured)
+- transform: true — plain objects auto-converted to DTO class instances
+- whitelist: true — unknown properties stripped
+
+These cover 95% of validation needs. Do NOT add more global pipes.
+
+Use ParseIntPipe, ParseUUIDPipe etc. for route parameter types.
+Do NOT create custom pipes when class-validator handles it.
+
+
+## ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+## SECTION 13: INTERCEPTORS — CROSS-CUTTING CONCERNS
+## ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+### Current Interceptors
+- LoggingInterceptor: logs method, url, status, duration (global)
+- ClassSerializerInterceptor: handles @Exclude/@Expose (global)
+
+RULES:
+- Do NOT add interceptors for things guards/filters handle
+- Do NOT create TransformInterceptor wrapping response in { success, data }
+- Do NOT create CacheInterceptor without measured performance problem
+- Only add interceptors for: caching (with metrics), timeout (external APIs),
+  or response mapping (when shape consistently differs)
+
+
+## ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+## SECTION 14: EXCEPTION FILTERS — ERROR HANDLING
+## ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+### Current Filters
+- GlobalExceptionFilter: catches ALL, formats as { statusCode, message }
+- StripeExceptionFilter: catches Stripe errors, maps to HTTP status
+
+RULES:
+- Use NestJS built-in exceptions. Do NOT create custom exception classes
+  unless built-ins cannot express the shape you need.
+- Do NOT catch and re-throw. Let exceptions bubble to the filter.
+- Do NOT add try/catch in controllers for expected errors. Throw instead.
+- Do NOT create feature-specific filters unless error shape genuinely differs.
+
+```ts
+// BAD: try/catch in controller
+try { return await this.service.findById(id); }
+catch (e) { throw new NotFoundException(); }  // Service should throw this
+
+// GOOD: Service throws, filter catches
+if (!payment) throw new NotFoundException('Payment not found');
+```
+
+
+## ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+## SECTION 15: STRIPE INTEGRATION
+## ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+### Stripe Module (GLOBAL)
+Thin wrappers around the Stripe SDK. Business logic belongs in feature services.
+
+- stripe-client.provider.ts — creates the Stripe client
+- stripe-payment-intents.service.ts — createPaymentIntent, createCheckoutSession
+- stripe-payment-methods.service.ts — attach, detach, list
+- stripe-customers.service.ts — create, retrieve customers
+- stripe-billing.service.ts — invoices, subscription items
+- stripe-webhooks.service.ts — verify and process webhook events
+
+RULES:
+- StripeService methods are THIN wrappers. They call SDK and return.
+  No business logic in Stripe services.
+- ALWAYS pass idempotency keys to mutation endpoints.
+  Use generateUniqueIdempotencyKey() from common/utils/idempotency.ts.
+- Handle Stripe errors via StripeExceptionFilter, not try/catch in business services.
+- Delete generateIdempotencyKey() — unused (superseded by the unique version).
+
+### Webhook Handling
+- Raw body for signature verification
+- Signature verification before processing
+- Idempotency (Stripe may send same event twice)
+- Follow stripe-webhooks.service.ts pattern for new handlers
+
+
+## ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+## SECTION 16: AUTHENTICATION & SESSIONS
+## ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+### Current Architecture
+Passport.js (local strategy) + express-session + Redis store + CSRF (double-submit)
+
+- Login: POST /auth/login → LocalAuthGuard → session regeneration → user
+- Register: POST /auth/register → AuthService.register → auto-login
+- Logout: POST /auth/logout → req.logout() → session destroyed
+- Session check: AuthenticatedGuard on all protected routes
+- CSRF: doubleCsrf from csrf-csrf, x-csrf-token header on mutations
+
+RULES:
+- Session config in config/session.config.ts — do NOT modify unless changing behavior
+- CSRF config in config/csrf.config.ts — do NOT modify unless changing strategy
+- Do NOT add JWT tokens unless you need stateless auth (e.g., mobile API)
+- Do NOT add OAuth2/social login unless explicitly requested
+- Passport strategies stay in the auth module
+- Session regeneration on login (prevents session fixation) — do NOT remove
+
+### Session Data Flow
+Client → Cookie (stripe-app.session) → Redis → req.user (Passport)
+- Cookie: httpOnly, sameSite=lax, secure in production, 7-day
+- Rolling: true (refreshes on each request)
+- Do NOT store large objects in session. Only user ID + essential fields.
+
+
+## ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+## SECTION 17: CONFIGURATION
+## ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+### ConfigModule (Global)
+- Access via ConfigService.get<T>('KEY') or getOrThrow<string>('KEY')
+- getOrThrow for required (crashes on missing — fail fast)
+- get with default for optional (ConfigService.get('PORT', 3001))
+- Do NOT create ConfigService wrappers
+- Do NOT create namespaced configs unless 10+ related keys
+- Do NOT create config validation schemas unless missing configs cause confusing errors
+
+### Environment Variables
+Required: DB_HOST, DB_PORT, DB_SERVICE_NAME, DB_USER, DB_PASSWORD,
+          REDIS_URL, STRIPE_SECRET_KEY, SESSION_SECRET
+Optional: PORT (3001), FRONTEND_URL (http://localhost:3000), NODE_ENV (development)
+
+
+## ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+## SECTION 18: SECURITY
+## ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+### Currently Implemented
+- Helmet: CSP, HSTS, CORS headers (main.ts)
+- CORS: origin = FRONTEND_URL, credentials: true
+- CSRF: double-submit cookie (csrf-csrf), x-csrf-token header
+- Rate limiting: 100/min global (ThrottlerGuard), 5/min on auth (@Throttle)
+- Session: httpOnly, sameSite=lax, rolling, 7-day, Redis
+- Input validation: class-validator + ValidationPipe (whitelist + transform)
+- Password hashing: bcrypt
+
+### Security Rules
+- Do NOT disable helmet, CSRF, throttler, or session security
+- Do NOT add @Public() decorators bypassing ThrottlerGuard without review
+- Do NOT log passwords, tokens, or Stripe secret keys
+- Validate ALL inputs through DTOs
+- Do NOT add CORS wildcard in production
+- Do NOT set sameSite: 'none' without cross-site use case
+- New mutation endpoints: CSRF is checked automatically by middleware
+- Do NOT add 'unsafe-eval' to CSP scriptSrc
+
+### Content Security Policy (CSP)
+Configured for Stripe.js in main.ts:
+- scriptSrc: 'self', 'unsafe-inline', js.stripe.com
+- frameSrc: 'self', js.stripe.com, hooks.stripe.com
+- connectSrc: 'self', api.stripe.com
+- Do NOT add wildcards to any CSP directive
+
+
+## ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+## SECTION 19: SCHEDULING
+## ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+The project uses @nestjs/schedule.
+
+```ts
+@Cron('0 2 1 * *')  // 2am on the 1st of every month
+async runMonthlyBilling() { ... }
+```
+
+RULES:
+- Only @Cron() for time-based triggers (billing, cleanup)
+- Cron expressions should be simple. Document what they mean in a comment.
+- Do NOT create a "SchedulerService" wrapper — NestJS IS the scheduler.
+- Scheduled tasks MUST be idempotent (may run twice in distributed deployment)
+
+
+## ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+## ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+## SECTION 20: PAGINATION, SORTING & FILTERING
+## ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+### Pagination Pattern
+
+All list endpoints MUST support pagination. Use offset-based (simple):
+
+```ts
+// Controller
+@Get()
+async getPayments(
+  @Req() req: Request,
+  @Query('page', new ParseIntPipe({ optional: true })) page?: number,
+  @Query('limit', new ParseIntPipe({ optional: true })) limit?: number,
+) {
+  const p = page ?? 1;
+  const l = Math.min(limit ?? 20, 100); // cap at 100
+  const offset = (p - 1) * l;
+  return this.paymentsSql.findByUserId(userId, offset, l);
+}
+
+// SqlService
+async findByUserId(userId: string, offset = 0, limit = 20): Promise<Payment[]> {
+  const result = await this.database.query(
+    'SELECT * FROM STRIPE_PAYMENTS WHERE USER_ID = :1 ORDER BY CREATED_AT DESC OFFSET :2 ROWS FETCH FIRST :3 ROWS ONLY',
+    [userId, offset, limit],
+  );
+  return result.rows.map(mapPayment);
+}
+```
+
+RULES:
+- Default page size: 20. Maximum: 100. Enforce with Math.min().
+- Return an array. Do NOT wrap in `{ data: [], total: N, page: N }` until
+  the frontend needs total count for a progress bar or page indicator.
+  Simple arrays suffice until proven otherwise (YAGNI).
+- Use `OFFSET/FETCH FIRST` for Oracle pagination.
+- Do NOT create a generic PaginationDto until 3+ endpoints need it.
+  For now, optional @Query params inline are fine.
+
+### Sorting
+
+Use `@Query('sort')` with allowed values:
+
+```ts
+@Get()
+async getPayments(
+  @Query('sort') sort?: string,
+) {
+  const allowedSorts = ['created_at', 'amount_gbp', 'status'];
+  const orderBy = allowedSorts.includes(sort) ? sort.toUpperCase() : 'CREATED_AT';
+  // Pass to SqlService, use in ORDER BY clause
+}
+```
+
+RULES:
+- Validate sort values against an allowlist. NEVER interpolate user input into SQL.
+- Default sort: CREATED_AT DESC
+- Do NOT create a generic SortPipe. Inline validation until 3+ endpoints.
+
+### Filtering
+
+Use specific query params, not a generic "filter" object:
+
+```ts
+@Get()
+async getPayments(
+  @Query('status') status?: string,
+) {
+  // Pass to SqlService, add WHERE clause if provided
+}
+```
+
+RULES:
+- One query param per filter field. ?status=PENDING&currency=GBP
+- Validate enum values. Do NOT allow arbitrary WHERE clause injection.
+- Do NOT create a generic FilterDto until 3+ endpoints need the same filters.
+
+
+## ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+## SECTION 21: HEALTH CHECKS & OBSERVABILITY
+## ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+### Health Check Endpoint
+
+The project has a basic `/billing/health` endpoint. For a proper health check:
+
+```ts
+@Get('health')
+health() {
+  return { status: 'ok', timestamp: new Date().toISOString() };
+}
+```
+
+RULES:
+- Health checks return quickly. No DB queries.
+- Use `/health` at the app level for container/Docker health checks.
+- Use `/billing/health` for feature-specific readiness (checks DB, Stripe).
+- Do NOT add @nestjs/terminus until you need composite health checks
+  (DB + Redis + Stripe). Simple response objects suffice.
+- Health endpoints should NOT require authentication.
+  Add `@Public()` or exclude from AuthenticatedGuard if needed.
+
+### Metrics
+
+The project has a MetricsController using prom-client.
+
+RULES:
+- Keep metrics endpoints under `/metrics`.
+- Do NOT add application-level metrics until you need dashboards/alerts.
+- Do NOT expose metrics publicly in production. Restrict to internal network.
+
+
+## ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+## SECTION 22: RATE LIMIT ERROR HANDLING
+## ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+The ThrottlerGuard returns 429 Too Many Requests when rate limits are hit.
+
+RULES:
+- The GlobalExceptionFilter already handles 429 responses.
+  Do NOT add custom handling for throttler errors.
+- Do NOT add Retry-After headers manually — NestJS Throttler can provide them
+  if configured. Only add if the frontend needs them.
+- Auth routes use @Throttle({ default: { ttl: 60000, limit: 5 } })
+  for stricter limits. Follow this pattern for any new sensitive endpoints.
+- Do NOT add per-IP rate limiting unless you measure a specific abuse pattern.
+  The global 100/min is sufficient until proven otherwise.
+
+
+## ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+## SECTION 23: DOCKER & DEPLOYMENT
+## ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+Both projects have Dockerfiles and docker-compose files.
+
+### Backend Docker Rules
+- Use multi-stage builds: build stage + production stage
+- Do NOT run as root in the production image
+- Expose health check endpoint for Docker HEALTHCHECK
+- Do NOT bundle devDependencies in the production image
+- Use `node dist/main.js` for production, NOT `nest start`
+
+### Environment Variables in Docker
+- Pass via docker-compose environment or .env file
+- Do NOT bake secrets into the Docker image
+- Do NOT use production .env values in development docker-compose
+
+### Database Migrations
+- Migrations run on application startup (OracleService.onModuleInit)
+- In Docker: application startup IS the migration step
+- Do NOT add a separate migration container unless startup takes too long
+- Do NOT add migration rollback until you have a specific need (YAGNI)
+
+
+## SECTION 24: TESTING
+## ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+### Organization
+- Unit tests: next to source (X.spec.ts beside X.ts)
+- E2E tests: test/ directory
+- File naming: <name>.spec.ts (NOT .test.ts)
+
+### What to Test
+
+| Layer | What | Priority |
+|---|---|---|
+| Services with logic | Business rules, orchestration, errors | HIGH |
+| SQL mappers | Row-to-entity mapping, null handling | HIGH |
+| Guards | CanActivate logic | MEDIUM |
+| DTOs | Validation rules | MEDIUM |
+| Exception filters | Error formatting | MEDIUM |
+
+### What NOT to Test
+- NestJS framework (DI, module resolution)
+- Third-party libs (Stripe SDK, oracledb, passport)
+- Simple delegation (service method that just calls sql)
+- Configuration loading
+
+### Test Patterns
+```ts
+// GOOD: Service test with proper mocks
+describe('PaymentsService', () => {
+  let service: PaymentsService;
+  let sqlMock: Partial<PaymentsSqlService>;
+
+  beforeEach(() => {
+    sqlMock = { create: jest.fn().mockResolvedValue({ id: '1' }) };
+    service = new PaymentsService(sqlMock as PaymentsSqlService, ...);
+  });
+
+  it('creates payment', async () => {
+    await service.createPaymentIntent(mockUser, mockDto);
+    expect(sqlMock.create).toHaveBeenCalled();
+  });
+});
+```
+
+Do NOT create full AppModule for unit tests. Only import needed providers.
+
+
+## ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+## SECTION 25: LOGGING
+## ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+- Use NestJS Logger. Do NOT use console.log.
+- Logger context: `new Logger(ClassName.name)`
+- Levels: error (failures), warn (degraded), log (info), debug (dev only)
+- Do NOT add Winston/Pino unless you need structured logging for a log aggregator
+- Do NOT log request/response bodies (may contain sensitive data)
+- Do NOT log passwords, tokens, secrets
+- LoggingInterceptor already logs method, URL, status, duration
+
+
+## ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+## SECTION 26: TYPESCRIPT STANDARDS
+## ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+- Strict mode (strictNullChecks, noImplicitAny)
+- unknown over any. Always.
+- No @ts-ignore without a comment explaining why
+- No non-null assertions (!) without a guard check before it
+- interfaces for object shapes, type for unions/intersections
+- No generic types until 3 concrete types use them
+- No utility types for convenience — only for knowledge deduplication
+- Entity types: shared/entities/
+- API types: shared/types/
+- Do NOT duplicate types between shared/ and feature modules
+
+
+## ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+## SECTION 27: GIT & COMMIT DISCIPLINE
+## ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+- Small commits. One logical change per commit.
+- Commit message: WHAT and WHY, not HOW.
+- Do not bundle cleanups with features. Separate commits.
+- Do not leave failing tests in main.
+- Do not commit .env files.
+- Do not commit node_modules/.
+
+
+## ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+## SECTION 28: CODE REVIEW CHECKLIST
+## ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+Before finishing ANY task:
+
+- [ ] No service that just delegates without logic
+- [ ] No function that just calls another function
+- [ ] No abstract class with fewer than 3 implementations
+- [ ] No Symbol tokens where strings suffice
+- [ ] No barrel exports (import from source files)
+- [ ] No dead code (unused functions, superseded utilities)
+- [ ] Every service method has at least 2 lines of real logic
+- [ ] No business logic in controllers
+- [ ] No DTO inheritance
+- [ ] No guard/interceptor/filter that duplicates built-in behavior
+- [ ] All SQL uses bind parameters, not string interpolation
+- [ ] All mutation endpoints have idempotency keys (Stripe)
+- [ ] All input validated through DTOs + class-validator
+- [ ] AuthenticatedGuard on all protected controllers
+- [ ] List endpoints support pagination (default 20, max 100)
+- [ ] Sort and filter values validated against allowlist
+- [ ] Health check endpoint exists and does not require auth
+- [ ] @Throttle on auth routes
+- [ ] No sensitive data in logs
+- [ ] Tests exist for services with real business logic
+
+
+## ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+## SECTION 29: DECISION FRAMEWORK — BEFORE WRITING CODE
+## ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+Before creating anything new, ask:
+
+1. Create a new file? → Can this go in an existing file?
+2. Create a new class? → Can this be 2 functions?
+3. Create an abstract? → Do I have 3 implementations?
+4. Create a utility? → Is this used in 3+ places?
+5. Create a config? → Can this be a hard-coded constant?
+6. Create a wrapper? → What does this add that the original lacks?
+7. Create a type? → Can I use a primitive or existing type?
+8. Create a module? → Is this a real bounded context?
+9. Add a dependency? → Can I do this with what I already have?
+10. Add a layer? → What problem does this layer solve right now?
+
+If the answer is "future flexibility" or "clean architecture" without a
+concrete current problem — do not do it.
+
+## ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+## SECTION 30: BOY SCOUT RULE — REFACTOR ON TOUCH
+## ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+When you touch a file for ANY reason:
+
+1. Delete dead code (unused functions, superseded utilities)
+2. Flatten delegation (if method just calls another, inline the call)
+3. Inline single-use abstractions
+4. Fix barrel imports (from '../shared' → '../shared/types/api.types')
+5. Remove unnecessary services (if no logic, controller calls SqlService)
+6. Simplify types (type used in one module? define it there)
+7. Consolidate common/ vs shared/ (data in shared/, NestJS in common/)
+8. Change Symbol tokens to strings
+9. Remove manual validation that DTOs should handle
+10. Replace try/catch with proper exception throwing
+
+Do NOT "refactor later." Clean it now.

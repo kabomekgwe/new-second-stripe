@@ -1,0 +1,830 @@
+# =====================================================================
+# NEXT.JS 16 FRONTEND — CURSOR RULES
+# =====================================================================
+# Stack: Next.js 16.2.1, React 19.2.4, Tailwind 4, RTK Query, Zod 4
+# This is a STANDALONE REPO. The backend is a separate repository.
+# Backend API URL is configured via environment variables.
+# =====================================================================
+#
+# This project has a history of over-engineering. These rules are
+# NON-NEGOTIABLE. They override any tendency to "improve" code by
+# adding abstraction layers, wrapper components, helper utilities,
+# or any pattern that increases indirection without proportional
+# clarity gain.
+# =====================================================================
+
+
+## ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+## SECTION 1: UNIVERSAL PRINCIPLES — APPLIES TO EVERYTHING
+## ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+### Simplicity Is the Default
+Every line of code must justify its existence. When in doubt, leave it out.
+The simplest solution that works correctly TODAY beats the "flexible" solution
+that might work tomorrow.
+
+### The Rule of Three
+Do NOT extract shared code until you see the SAME logic in THREE places.
+1st use → Write it inline. 2nd use → Write it inline again. 3rd use → Extract.
+Applies to: functions, components, hooks, services, types, constants, patterns.
+
+### No Code Without a Reason
+Before writing ANY code: What problem does this solve? Who needs this right
+now? What is the SIMPLEST way to solve it? If you cannot answer all three,
+do not write the code.
+
+### Boy Scout Rule — Always
+When you touch a file, leave it cleaner: delete unused imports, remove
+commented-out code, flatten nesting (max 2 levels), fix misleading names,
+inline single-use abstractions, fix barrel imports. Do NOT leave TODOs for
+cleanup. Clean it now.
+
+### Delete > Deprecate
+Never deprecate code with a comment. Delete it. It is in git.
+Dead code is not documentation. It is a trap.
+
+### Universal Anti-Patterns
+- Wrapper functions: `const log = (msg) => logger.info(msg)` → just call `logger.info(msg)`
+- Wrapper classes: `class Config { get(key) { return process.env[key]; } }` → `process.env.KEY`
+- Premature interfaces: `interface IPaymentService` with 1 implementation → just the class
+- Over-nesting: 4+ levels → flat early returns
+- Feature flags without features: `const ENABLE = true; if (ENABLE)` → just write the code
+- Barrel exports: `export * from './types'` → import from source files
+- Dead code: if nobody calls it, delete it
+
+
+## ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+## SECTION 2: ZERO TOLERANCE RULES — VIOLATION = REWRITE
+## ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+### 1. NO HELPER FUNCTIONS FOR HELPER FUNCTIONS
+If the function body is a single call to another function, DELETE the wrapper.
+
+### 2. NO CLASSES WHEN FUNCTIONS SUFFICE
+If a class has no lifecycle, no mutable state after construction, and no
+methods that interact with each other — use functions.
+
+### 3. NO PREMATURE ABSTRACTION
+Rule of Three before extracting. No shared component until 3 uses.
+
+### 4. NO BARREL EXPORTS
+Import from the actual source file. Never from index.ts re-exports.
+
+### 5. NO PROVIDER WRAPPER COMPONENTS
+Nest providers directly in layout.tsx. No components/providers/ directory.
+
+### 6. NO DEEPLY NESTED CONDITIONAL LOGIC
+Maximum 2 levels of nesting. Flatten with early returns.
+
+
+## ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+## SECTION 3: DESIGN PRINCIPLES (KISS, DRY, YAGNI, TDD)
+## ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+### KISS — No Pattern Without a Problem
+Articulate the exact problem before applying any pattern. Prefer built-in
+Next.js features (Server Actions, fetch, use(), cache(), Route Handlers)
+over custom wrappers "for consistency" or "to centralize logic."
+
+Decision Framework:
+| You are about to... | Ask yourself | Action |
+|---|---|---|
+| Create a new file | Under 50 lines? | Inline or merge into existing file |
+| Create a custom hook | Used in 3+ components? | If under 3, inline the logic |
+| Create a wrapper component | Adds visual structure or just wraps? | If just wraps, inline the JSX |
+| Create a utility function | Used in 3+ places? | If under 3, inline it |
+| Create a context/provider | State truly global? | If component-local, keep it local |
+| Create a store slice | Must survive navigation? | If transient, use component state |
+
+### DRY — Don't Duplicate Knowledge, Not Lines
+- DRY applies to: API response shapes, business calculations, validation schemas
+- DRY does NOT apply to: similar JSX with different semantics, repeating imports,
+  similar Tailwind classes, identical error messages in unrelated contexts
+
+### YAGNI — Build for Today
+- "We might need X later" → Build X when you need X
+- "Let's make this configurable" → Hard-code it. Configure when there are 2 configs.
+- Do NOT add Redux slices for single-page data
+- Do NOT add analytics hooks unless asked
+- Do NOT create base component variants until the variants exist
+
+### TDD — Red, Green, Refactor
+1. RED: Write a failing test
+2. GREEN: Write the MINIMUM code to pass
+3. REFACTOR: Simplify. Do NOT add features.
+
+
+## ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+## SECTION 4: BACKEND API CONTRACT (Separate Repository)
+## ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+The backend (NestJS) is a SEPARATE repository. Communication is via HTTP API.
+
+### API Shapes
+- Backend is the SOURCE OF TRUTH for response shapes
+- Frontend mirrors backend types with a comment: `// Mirrors backend api.types`
+- When backend types change, update frontend types in the SAME task/issue
+- Do NOT create a shared npm package — the repos are separate
+- Do NOT keep types "in sync manually" without a comment pointing to the source
+
+### Error Contract
+- Backend returns: `{ statusCode: number, message: string | string[] }`
+- Frontend catches `ApiError` type matching that shape
+- Do NOT wrap errors in custom hierarchies "for consistency"
+
+### Security Contract
+- ALL API calls: `credentials: 'include'` (cookies)
+- CSRF: `x-csrf-token` header on all mutations (handled by RTK Query interceptor)
+- Session: httpOnly cookies, sameSite=lax, rolling, 7-day expiry
+- Environment: `NEXT_PUBLIC_*` for client, no prefix for server secrets
+- Do NOT store secrets in localStorage
+- Do NOT disable CSP, CSRF, or rate limiting
+
+
+## ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+## SECTION 5: NEXT.JS 16 APP ROUTER — MANDATORY CONVENTIONS
+## ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+### File Naming Convention (NON-NEGOTIABLE)
+
+| File | Purpose | Render |
+|---|---|---|
+| `layout.tsx` | Shared UI shell | Server |
+| `page.tsx` | Route UI | Server |
+| `loading.tsx` | Suspense fallback | Server |
+| `error.tsx` | Error boundary | MUST be 'use client' |
+| `not-found.tsx` | 404 UI | Server |
+| `route.ts` | API/webhook endpoint | No UI (returns Response) |
+| `default.tsx` | Fallback for parallel routes | Server |
+| `template.tsx` | Re-mounted layout (rare) | Server |
+| `middleware.ts` | Request interceptor (root only) | Edge Runtime |
+
+RULES:
+- `loading.tsx`: match the LAYOUT of real content (skeleton), not just a spinner
+- `error.tsx`: MUST be 'use client'. Always include the reset() button.
+- `route.ts`: ONLY for webhooks and third-party callbacks. NOT for internal API calls.
+- `template.tsx`: Do NOT use unless you need re-mount behavior. Use `layout.tsx`.
+
+### Layout Nesting (Current Architecture)
+
+```
+app/layout.tsx                 → <html>, <body>, global providers
+app/(protected)/layout.tsx     → Auth check, sidebar, nav, AuthContext
+app/(protected)/page.tsx        → Dashboard
+app/auth/login/page.tsx        → Login (outside protected group)
+```
+
+- Root layout: ONLY html/body/global providers. NO nav, NO auth logic.
+- Protected layout: auth check + nav shell. AuthContext lives here.
+- Page files: thin. Fetch data, render components.
+
+### Server Components vs Client Components
+
+**Server Components (default)** — use when:
+- Fetching data (database, API)
+- Rendering static or server-fetched content
+- NO interactivity needed
+
+**Client Components ('use client')** — ONLY use when:
+- Event handlers (onClick, onChange, onSubmit)
+- React hooks (useState, useEffect, useRef, useMemo)
+- Browser-only APIs (window, localStorage)
+- React context providers (AuthContext, ThemeContext)
+- Third-party client-only libs (Stripe.js Elements)
+
+BANNED: 'use client' on a component that only renders static data.
+BANNED: 'use client' at file top with multiple exports (forces all to be client).
+
+**Composition pattern (Server wrapping Client):**
+```tsx
+// page.tsx (Server Component)
+import { PaymentForm } from './payment-form'; // Client Component
+
+export default async function PaymentsPage() {
+  const methods = await fetchPaymentMethods(); // server-side fetch
+  return <PaymentForm methods={methods} />;    // pass as serializable props
+}
+```
+
+NEVER: Client Component fetching data with RTK Query that could be server-fetched.
+
+### Server Actions (use server)
+
+Server Actions replace API routes for form mutations.
+
+```tsx
+// actions/create-payment.ts
+'use server';
+import { z } from 'zod';
+import { redirect } from 'next/navigation';
+
+const schema = z.object({
+  amountGbp: z.coerce.number().min(1),
+  paymentMethodId: z.string().min(1),
+});
+
+export async function createPayment(formData: FormData) {
+  const parsed = schema.safeParse(Object.fromEntries(formData));
+  if (!parsed.success) return { error: parsed.error.flatten().fieldErrors };
+  // Call backend API
+  const res = await fetch(`${process.env.API_URL}/payments`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', Cookie: cookies() },
+    body: JSON.stringify(parsed.data),
+  });
+  if (!res.ok) return { error: 'Payment failed' };
+  redirect('/payments');
+}
+```
+
+```tsx
+// new-payment-form.tsx ('use client')
+import { createPayment } from './actions/create-payment';
+import { useFormState } from 'react-dom';
+
+export function NewPaymentForm() {
+  const [state, formAction] = useFormState(createPayment, null);
+  return (
+    <form action={formAction}>
+      <input name="amountGbp" type="number" required min={1} />
+      <input name="paymentMethodId" type="hidden" value={selectedMethodId} />
+      {state?.error && <p className="text-red-600">{state.error}</p>}
+      <button type="submit">Pay</button>
+    </form>
+  );
+}
+```
+
+Server Action RULES:
+- ALWAYS use 'use server' directive at file TOP
+- ALWAYS validate with Zod. Never trust form data.
+- Return serializable objects (no functions, no class instances)
+- Use redirect() for post-mutation navigation
+- Use revalidatePath() or revalidateTag() to refresh cached data
+- Do NOT create Server Actions that just proxy to API routes without adding value
+
+When to use Server Actions vs RTK Query:
+- Server Actions: ALL form submissions, mutations with redirects
+- RTK Query: Read-only queries needing client-side caching + auto-refetch
+- NEVER use both for the same operation
+
+### Data Fetching Standards
+
+**Server Component fetch (PREFERRED for reads):**
+```tsx
+export default async function BillingPage() {
+  const charges = await fetch(`${API}/billing`, {
+    headers: { Cookie: cookies() },
+    next: { revalidate: 60 },
+  }).then(r => r.json());
+  return <BillingHistory charges={charges} />;
+}
+```
+
+**RTK Query (for CLIENT-SIDE interactive reads):**
+Correct use: data consumed by multiple client components, needs optimistic updates, requires polling.
+Wrong use: data used in one page, data that never changes, data fetched on page load.
+
+RULES:
+- New pages: default to Server Component fetch
+- Existing RTK Query endpoints: do NOT remove working code, but consider migrating reads
+- Do NOT create "dual fetching" (server AND RTK Query for same data)
+
+**Caching:**
+```ts
+fetch(url, { cache: 'force-cache' });      // Static (build time)
+fetch(url, { next: { revalidate: 60 } });   // Revalidate every 60s
+fetch(url, { cache: 'no-store' });           // Always fresh
+```
+
+Dynamic rendering triggers: cookies(), headers(), searchParams prop
+
+### Metadata API
+
+```tsx
+// Static metadata
+export const metadata: Metadata = { title: 'Payments', description: '...' };
+
+// Dynamic metadata
+export async function generateMetadata(): Promise<Metadata> {
+  const user = await getUser();
+  return { title: `Billing — ${user.name}` };
+}
+```
+
+RULES: Every page.tsx SHOULD have metadata. Define it inline, not in a utility.
+
+### Error Handling (error.tsx)
+
+```tsx
+// app/(protected)/billing/error.tsx
+'use client'; // REQUIRED
+export default function BillingError({ error, reset }: { error: Error & { digest?: string }; reset: () => void }) {
+  return (
+    <div className="p-6">
+      <h2 className="text-lg font-semibold text-red-600">Something went wrong</h2>
+      <p className="mt-2 text-gray-600">{error.message}</p>
+      <button onClick={reset} className="mt-4 rounded bg-gray-900 px-4 py-2 text-white">Try again</button>
+    </div>
+  );
+}
+```
+
+### Loading States (loading.tsx)
+
+Skeleton should match the LAYOUT of real content, not just a spinner.
+Use Tailwind animate-pulse. Do NOT use spinner libraries.
+
+### Middleware (middleware.ts at project root)
+
+Use for: auth redirects, geolocation, feature flags via cookies.
+Keep it FAST — no database calls, no heavy computation. Must use Edge Runtime.
+The matcher config is REQUIRED. Do NOT run on static assets.
+
+### Navigation
+
+- `<Link>` for ALL internal navigation. NOT `<a>` tags.
+- `redirect()` in Server Components and Server Actions.
+- `notFound()` when data is not found.
+- `useRouter()` ONLY in Client Components for programmatic navigation.
+- NEVER `window.location.href` for navigation (breaks client routing).
+
+### Images and Fonts
+
+- ALWAYS `next/image`. NEVER `<img>`.
+- Only `priority` for above-the-fold images.
+- `next/font` for ALL fonts. NEVER `@font-face` or Google Fonts `<link>`.
+- Only load the subsets and weights you need.
+
+
+## ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+## SECTION 6: STATE MANAGEMENT — RTK QUERY + REDUX
+## ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+### Architecture: What Goes Where
+
+```
+State type           | Where to put it              | Example
+-------------------- | ---------------------------- | ----------------------
+Server-fetched data  | Server Component + fetch()    | Billing history, profile
+URL state           | searchParams / URL hash       | Active tab, page number
+Form state          | useState / useActionState      | Input values, validation
+Global client state | Redux store (RTK Query)       | Auth session, CSRF token
+Component UI state  | useState                      | Modal open, dropdown open
+Shared client data  | RTK Query (with tags)          | Payment methods list
+```
+
+### RTK Query — When to Add Endpoints
+
+ADD a new endpoint when:
+- Multiple client components need the SAME data
+- You need automatic cache invalidation after mutations
+- You need polling or real-time updates on the client
+
+DO NOT add a new endpoint when:
+- Data only read in one page → Server Component fetch
+- Data is static or rarely changes → Server Component + revalidate
+- Could use Server Actions instead → Server Actions for mutations
+
+### RTK Query Organization
+
+```
+lib/store/
+  store.ts              ← configureStore (do not touch)
+  api.ts                ← Base apiSlice with CSRF + auth interceptor
+  auth-api.ts            ← Auth endpoints
+  billing-api.ts        ← Billing endpoints
+  payments-api.ts       ← Payments endpoints
+  payment-methods-api.ts ← Payment methods endpoints
+```
+
+One file per domain. Inject into apiSlice. Use tagTypes for cache invalidation.
+Do NOT create separate createApi instances.
+
+### Redux Store Rules
+- ONE slice: RTK Query (apiSlice.reducerPath)
+- Do NOT add a custom slice for data that RTK Query manages
+- Do NOT add a custom slice for data that could be component state
+- Only add a custom slice for truly global, non-API state that persists across routes
+
+### CSRF Token Handling
+The api.ts handles CSRF: fetches before mutations, retries on 403, caches token.
+Do NOT duplicate this logic elsewhere. Do NOT create a separate CSRF hook.
+
+
+## ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+## SECTION 7: FORMS & VALIDATION
+## ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+### Form Strategy
+
+React Hook Form is installed. Use it ONLY for:
+- Multi-step forms with complex state
+- Forms with conditional fields
+- Forms with dependent validations
+
+For ALL other forms: native `<form>` + Server Actions + Zod.
+
+- Validate on the SERVER (Server Action). HTML5 validation is a UX bonus.
+- Define Zod schemas NEXT TO the Server Action, not in a separate file.
+- Do NOT create a "validation library" or "shared schemas" file.
+- Do NOT share schemas between frontend and backend (separate trust boundaries).
+
+### useActionState for Server Actions
+
+```tsx
+'use client';
+import { useFormState } from 'react-dom';
+import { createPayment } from './actions/create-payment';
+
+export function PaymentForm() {
+  const [state, formAction] = useFormState(createPayment, null);
+  return <form action={formAction}>...</form>;
+}
+```
+
+
+## ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+## SECTION 8: STYLING — TAILWIND 4
+## ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+- Tailwind classes directly on elements. No @apply abstractions.
+- NO CSS modules. No styles/ directories.
+- cn() from clsx/tailwind-merge ONLY for conditional classes. Not for every className.
+- Default color palette (gray, blue). Do NOT create custom color tokens.
+- Responsive: Tailwind breakpoints (sm, md, lg). Mobile-first.
+- No dark mode unless explicitly requested.
+- Animation: animate-pulse for skeletons, transition-* for hovers. No animation libraries.
+
+
+## ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+## SECTION 9: STRIPE.JS INTEGRATION
+## ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+- Load Stripe.js with loadStripe() at module scope (cache the promise)
+- Use Elements directly in the form component. No "StripeProvider" wrapper.
+- Call loadStripe() ONCE. Do NOT call it per render.
+- NEXT_PUBLIC_STRIPE_PK for the publishable key (env variable).
+
+
+## ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+## SECTION 10: COMPONENT ARCHITECTURE
+## ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+### Directory Structure
+
+```
+app/
+  (protected)/           ← Route group (shared layout with auth)
+    layout.tsx            ← Auth check, sidebar, AuthContext
+    page.tsx              ← Dashboard (Server Component)
+    billing/
+      page.tsx
+      loading.tsx         ← Suspense fallback skeleton
+      error.tsx           ← Error boundary ('use client')
+    payments/
+      page.tsx
+      new/page.tsx
+    payment-methods/
+      page.tsx
+      add/page.tsx
+    profile/
+      page.tsx
+  auth/
+    login/page.tsx
+    register/page.tsx
+  layout.tsx              ← Root layout: html, body, global providers
+  globals.css
+
+components/
+  billing/                 ← Billing-specific components
+  payment-methods/         ← Payment method components
+  payments/                ← Payment components
+  auth/                    ← Auth form components
+  ui/                      ← Shared UI primitives (button, toast)
+```
+
+### Component Rules
+
+1. NO components/providers/ — providers go in layout.tsx
+2. NO component directories with a single file — flatten it
+3. NO wrapper components that just pass children through
+4. NO "layout" components that just add a div with className
+5. Colocate: component used by ONE page stays in that page's directory.
+   Only promote to components/ when used by 3+ pages.
+6. Server Component first. Only add 'use client' when needed.
+7. Props > Context. Use Context only when prop drilling goes 3+ levels deep.
+
+### Composition Over Abstraction
+
+```tsx
+// BAD: Generic card with render props before you have variants
+interface CardProps<T> { data: T; renderHeader: (data: T) => ReactNode; ... }
+
+// GOOD: Specific component for actual need
+export function PaymentMethodCard({ method }: { method: PaymentMethodResponse }) {
+  return <div className="rounded-lg border p-4">...</div>;
+}
+```
+
+
+## ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+## SECTION 11: TYPESCRIPT STANDARDS
+## ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+- Strict mode (strictNullChecks, noImplicitAny)
+- unknown over any. Always.
+- No @ts-ignore without a comment explaining why
+- No non-null assertions (!) without a guard check before it
+- type for aliases, interface for object shapes with methods
+- No generic types until 3 concrete types use them
+- No utility types for convenience — only for knowledge deduplication
+- Props: inline type for one-offs, named type for 3+ uses
+
+
+## ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+## SECTION 12: TESTING STANDARDS
+## ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+### File Location
+- Unit tests: alongside source (payment-form.spec.tsx next to payment-form.tsx)
+- Integration: tests/ at project root
+- E2E: e2e-tests/ at project root (Playwright)
+
+### What to Test
+- Utilities: pure function logic → Jest unit test
+- Server Actions: input validation, return shape → Jest + mocked fetch
+- Client Components: user interactions → Testing Library
+- Server Components: render with mocked data → Testing Library
+- RTK Query: cache invalidation, optimistic updates → RTK Query test utils
+
+### What NOT to Test
+- NestJS/Next.js framework behavior
+- Stripe.js rendering
+- Tailwind CSS output
+- Third-party components
+
+### Test Rules
+- One assertion per concept
+- No test helpers more complex than the code under test
+- Inline test data, no factory functions
+- No mock when a stub or spy will do
+
+
+## ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+## SECTION 13: SECURITY
+## ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+- ALL API calls include credentials: 'include' (cookies, session)
+- CSRF tokens handled by RTK Query interceptor (api.ts) — do NOT duplicate
+- Server env: NEXT_PUBLIC_* are sent to the browser. Server secrets stay server-only.
+- Server Actions validate ALL input with Zod. Never trust client data.
+- Do NOT store sensitive data in localStorage. Use httpOnly cookies (already done).
+- Do NOT disable CSP. Helmet is configured in the backend.
+
+
+## ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+## ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+## SECTION 14: ACCESSIBILITY (a11y)
+## ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+Accessibility is NOT optional. It is a standard, not an enhancement.
+
+### Forms
+- EVERY form input MUST have an associated `<label>` (via htmlFor or wrapping)
+- Use `aria-label` only when a visible label is genuinely impossible
+- Use `aria-describedby` for validation error messages
+- NEVER use placeholder as a substitute for a label
+- Group related fields with `<fieldset>` + `<legend>` (payment details, etc.)
+
+```tsx
+// BAD: No label, placeholder-as-label
+<input placeholder="Email" />
+
+// GOOD: Proper label
+<label htmlFor="email" className="text-sm font-medium">Email</label>
+<input id="email" type="email" required />
+```
+
+### Interactive Elements
+- ALL interactive elements must be keyboard accessible (tab, enter, escape)
+- Use `<button>` for actions. NEVER `<div onClick>` — it has no keyboard support
+- Use `<a>` (or `<Link>`) for navigation. NEVER `<span onClick>`
+- Focus management: after modals close, return focus to the trigger element
+- Focus visible: do NOT remove focus rings (`outline: none` alone is banned)
+  Use `focus-visible:ring-2 focus-visible:ring-blue-500` instead
+
+### Images
+- ALL images must have alt text (`alt` prop on next/image)
+- Decorative images: `alt=""` (empty string, not missing attribute)
+- Informative images: describe what the image conveys
+
+### Color
+- Do NOT rely on color alone to convey information
+  (e.g., "red text for errors" → also include an icon or text label)
+- Minimum contrast: 4.5:1 for normal text, 3:1 for large text
+
+### Dynamic Content
+- Loading states: visible to screen readers (`aria-busy`, `role="status"`)
+- Error messages: announced via `aria-live="polite"` region
+- Status changes: `role="status"` for toast/notifications
+
+
+## ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+## SECTION 15: PERFORMANCE & CODE SPLITTING
+## ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+### Dynamic Imports
+
+Use `next/dynamic` for HEAVY client-side components that are NOT needed on
+initial page load. This prevents shipping large JS bundles for pages that
+don't need them.
+
+```tsx
+// GOOD: Only load Stripe Elements when the payment form renders
+import dynamic from 'next/dynamic';
+
+const SetupForm = dynamic(
+  () => import('@/components/payment-methods/setup-form'),
+  { ssr: false, loading: () => <div className="h-64 animate-pulse rounded bg-gray-200" /> },
+);
+
+export default function AddPaymentMethodPage() {
+  return (
+    <div>
+      <h1>Add Payment Method</h1>
+      <SetupForm clientSecret={secret} />
+    </div>
+  );
+}
+```
+
+When to use `next/dynamic`:
+- Stripe.js components (`ssr: false` — Stripe needs browser APIs)
+- Large data visualization libraries
+- Components that only show after user interaction (modals, dialogs)
+
+When NOT to use:
+- Components needed on initial render (causes layout shift)
+- Components under 10KB (not worth the overhead)
+- Server Components (they are already code-split by route)
+
+### Parallel Data Fetching
+
+When a Server Component needs multiple independent data sources, fetch in parallel:
+
+```tsx
+// BAD: Sequential — slow, blocks on each fetch
+const user = await fetchUser();
+const payments = await fetchPayments(user.id);
+
+// GOOD: Parallel — all fetch at once
+const [user, payments, methods] = await Promise.all([
+  fetchUser(),
+  fetchPayments(userId),
+  fetchPaymentMethods(userId),
+]);
+```
+
+RULES:
+- Independent fetches → Promise.all (parallel)
+- Fetch B depends on fetch A → sequential (accept the waterfall)
+- Do NOT wrap everything in Promise.all if there are real dependencies
+
+### Image Performance
+- `priority` for above-the-fold images only
+- `sizes` prop for responsive images that vary by breakpoint
+- Do NOT use `unoptimized` unless the image format is unsupported
+
+### Bundle Awareness
+- Import specific functions (tree-shakeable), NOT entire libraries
+- Do NOT add CSS-in-JS. Tailwind is zero-runtime.
+- Do NOT add animation libraries. Tailwind transitions + CSS keyframes suffice.
+
+
+## ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+## SECTION 16: API REWRITES & MIDDLEWARE
+## ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+### API Rewrites (next.config.ts)
+
+The project proxies `/api/core/*` to the backend via next.config.ts rewrites:
+
+```ts
+// next.config.ts
+const nextConfig = {
+  output: 'standalone',
+  async rewrites() {
+    return [{ source: '/api/core/:path*', destination: `${CORE_API_URL}/:path*` }];
+  },
+};
+```
+
+RULES:
+- Frontend calls `/api/core/payments`, NOT the backend URL directly
+- The backend URL is `CORE_API_URL` (server-side env var, NOT NEXT_PUBLIC_)
+- Do NOT create Route Handlers that proxy to the backend — rewrites already do this
+- Do NOT hardcode backend URLs in components — use the rewrite path
+- RTK Query `baseUrl` is set to `/api/core` which rewrites to the backend
+
+### Middleware (middleware.ts)
+
+The project has server-side auth redirect. This MUST be `middleware.ts` at
+the project root per Next.js convention (currently `proxy.ts` — rename it).
+
+Current behavior:
+- Checks for `stripe-app.session` cookie
+- Redirects to `/auth/login?redirect=<path>` if no session cookie
+- Skips auth routes, API routes, and static files
+
+RULES:
+- Middleware runs on Edge Runtime — no Node.js APIs (no crypto, no fs)
+- Keep it FAST — only cookie checks, no API calls, no DB lookups
+- The middleware is a FIRST check only — the AuthenticatedGuard in the
+  (protected) layout does the REAL session validation
+- Do NOT add session validation to middleware (it cannot access Redis)
+- matcher config is REQUIRED — exclude static assets from middleware
+
+
+## SECTION 17: GIT & COMMIT DISCIPLINE
+## ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+- Small commits. One logical change per commit.
+- Commit message: WHAT and WHY, not HOW.
+- Do not bundle cleanups with features. Separate commits.
+- Do not leave failing tests in main.
+- Do not commit .env files.
+- Do not commit node_modules/.
+
+
+## ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+## SECTION 18: CODE REVIEW CHECKLIST
+## ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+Before finishing ANY task:
+
+- [ ] No function that just calls another function
+- [ ] No class that could be 2-3 plain functions
+- [ ] No barrel exports (import from source files)
+- [ ] No component that renders nothing of its own
+- [ ] No hook used in fewer than 3 places
+- [ ] No utility used in fewer than 3 places
+- [ ] Every 'use client' has a concrete reason
+- [ ] No premature configuration/abstraction added
+- [ ] No new Redux slice without multi-page need
+- [ ] No new RTK Query endpoint for server-fetchable data
+- [ ] Server Actions used for mutations, RTK Query for interactive reads
+- [ ] Zod validation on ALL Server Action inputs
+- [ ] loading.tsx exists for server-fetched pages
+- [ ] error.tsx exists for routes that can fail
+- [ ] Metadata on every page.tsx
+- [ ] next/image for all images, next/link for all internal links
+- [ ] No <img> tags, no <a> for internal navigation
+- [ ] Form inputs have labels (not just placeholders)
+- [ ] Buttons/links are keyboard accessible
+- [ ] Images have alt text
+- [ ] Dynamic imports for heavy client components (Stripe.js)
+
+
+## ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+## SECTION 19: DECISION FRAMEWORK — BEFORE WRITING CODE
+## ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+Before creating anything new, ask:
+
+1. Create a new file? → Can this go in an existing file? Under 50 lines = inline
+2. Create a new class? → Can this be 2 functions?
+3. Create an abstract? → Do I have 3 implementations?
+4. Create a utility? → Is this used in 3+ places?
+5. Create a config? → Can this be a hard-coded constant?
+6. Create a wrapper? → What does this add that the original lacks?
+7. Create a type? → Can I use a primitive or existing type?
+8. Create a context? → Is this state truly global? 3+ components?
+9. Add a dependency? → Can I do this with what I already have?
+10. Add a layer? → What problem does this layer solve right now?
+
+If the answer is "future flexibility" or "clean architecture" without a
+concrete current problem — do not do it.
+
+## ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+## SECTION 20: BOY SCOUT RULE — REFACTOR ON TOUCH
+## ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+When you touch a file for ANY reason:
+
+1. Delete dead code — unused imports, unreachable branches
+2. Flatten nested logic — early returns, max 2 levels deep
+3. Inline single-use abstractions — used once? Put it where it is used
+4. Simplify types — type used in one file? Define it there
+5. Remove unnecessary 'use client' — verify it actually needs client-side
+6. Fix barrel imports — from '@/lib/shared' → from '@/lib/shared/types/api.types'
+7. Add missing loading.tsx / error.tsx for the route
+8. Add missing metadata export
+9. Convert RTK Query reads to Server Component fetches where appropriate
+10. Replace <a> with <Link>, <img> with <Image>
+11. Add labels to any form input missing one
+12. Add alt text to any image missing it
+13. Rename proxy.ts → middleware.ts if it is middleware
+
+Do NOT "refactor later." Clean it now.
