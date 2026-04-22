@@ -611,7 +611,10 @@ Optional: PORT (3001), FRONTEND_URL (http://localhost:3000), NODE_ENV (developme
 - Do NOT set sameSite: 'none' without cross-site use case
 - New mutation endpoints: CSRF is checked automatically by middleware
 - Do NOT add 'unsafe-eval' to CSP scriptSrc
-
+- Do NOT return raw Error objects or stack traces in production responses
+  (GlobalExceptionFilter already strips this — do NOT add debug info to responses)
+- Do NOT expose internal IDs (Stripe customer IDs, DB internal IDs) in public
+  API responses unless the client needs them (validate per endpoint)
 ### Content Security Policy (CSP)
 Configured for Stripe.js in main.ts:
 - scriptSrc: 'self', 'unsafe-inline', js.stripe.com
@@ -795,6 +798,36 @@ Both projects have Dockerfiles and docker-compose files.
 - Do NOT add a separate migration container unless startup takes too long
 - Do NOT add migration rollback until you have a specific need (YAGNI)
 
+### Graceful Shutdown (CRITICAL for Docker)
+
+Without graceful shutdown, Docker sends SIGTERM and your app dies immediately —
+in-flight requests get dropped, DB connections leak, Redis sessions stay open.
+
+```ts
+// main.ts
+const app = await NestFactory.create(AppModule);
+app.enableShutdownHooks(); // ADD THIS — enables onModuleDestroy, onApplicationShutdown
+```
+
+RULES:
+- Call `app.enableShutdownHooks()` in bootstrap() BEFORE `app.listen()`
+- OracleService already implements OnModuleDestroy — the pool will close
+- Do NOT add custom shutdown logic if NestJS lifecycle hooks handle it
+- Test graceful shutdown: `docker stop <container>` should log shutdown, not just die
+
+### @Global() Module Warnings
+
+StripeModule and DatabaseModule are `@Global()`. This is acceptable because they
+provide truly app-wide infrastructure (DB connection, Stripe client).
+
+RULES:
+- Do NOT mark feature modules as `@Global()`. Only infrastructure.
+- Every `@Global()` module creates a HIDDEN dependency — every module can use
+  its providers without an explicit import. This makes the dependency graph
+  invisible. Limit @Global() to: ConfigModule, DatabaseModule, StripeModule.
+- If you add another @Global() module, document WHY in the module file.
+- When refactoring, prefer explicit imports over @Global() if the module is
+  used by fewer than half the feature modules.
 
 ## SECTION 24: TESTING
 ## ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━

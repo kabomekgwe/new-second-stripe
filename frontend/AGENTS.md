@@ -7,7 +7,13 @@ API communication via `/api/core/*` rewrites in next.config.ts.
 
 ## Full Rules
 
-The `.cursorrules` file contains the complete rule set (20 sections, ~830 lines).
+The `.cursorrules` file contains the complete rule set (20 sections, ~930 lines).
+
+### Critical Security Rules (from web research)
+- **Server Actions are PUBLIC POST endpoints** — must authenticate → parse → validate → authorize → mutate (in that order)
+- **redirect() throws** — never wrap in try/catch in Server Actions
+- **fetch() defaults to `cache: 'no-store'`** since Next.js 15 — opt IN to caching, don't opt out
+- **React 19 stable APIs**: `useActionState` (not useFormState), `useOptimistic` for instant UI feedback
 
 ### 20 Sections At a Glance
 
@@ -17,20 +23,20 @@ The `.cursorrules` file contains the complete rule set (20 sections, ~830 lines)
 | 2 | Zero Tolerance | No wrapper functions, no classes-when-functions, no barrels, max 2-level nesting |
 | 3 | KISS/DRY/YAGNI/TDD | No pattern without a problem, extract after 3 uses |
 | 4 | Backend API Contract | Backend is source of truth, mirror types with comment |
-| 5 | App Router Conventions | Server Components default, file naming, Server Actions, data fetching |
+| 5 | App Router Conventions | Server Components default, Server Actions with auth chain, caching defaults |
 | 6 | RTK Query | ADD for multi-component data; DON'T ADD for single-page reads |
-| 7 | Forms & Validation | Native form + Server Actions + Zod preferred |
+| 7 | Forms & Validation | Native form + Server Actions + Zod + useActionState + useOptimistic |
 | 8 | Tailwind 4 | Direct classes, no @apply, no CSS modules |
 | 9 | Stripe.js | loadStripe at module scope, ssr: false |
 | 10 | Component Architecture | Server-first, colocate, no provider wrappers |
 | 11 | TypeScript | unknown > any, type vs interface, no premature generics |
 | 12 | Testing | One assertion per concept, inline data, no complex factories |
-| 13 | Security | CSRF via RTK interceptor, Zod on Server Actions, no localStorage secrets |
-| **14** | **Accessibility** | **Labels on inputs, buttons not divs, focus rings, alt text** |
-| **15** | **Performance** | **Dynamic imports for Stripe.js, Promise.all for parallel fetches** |
-| **16** | **API Rewrites** | **Use /api/core/* not direct backend URL, rename proxy.ts → middleware.ts** |
+| 13 | Security | CSRF via RTK interceptor, Server Actions auth chain, no localStorage secrets |
+| 14 | Accessibility | Labels on inputs, buttons not divs, focus rings, alt text |
+| 15 | Performance | Dynamic imports for Stripe.js, Promise.all for parallel fetches |
+| 16 | API Rewrites | Use /api/core/* not direct backend URL, proxy.ts → middleware.ts |
 | 17 | Git | Small commits, WHAT and WHY |
-| 18 | Code Review | 20-item checklist including a11y and dynamic imports |
+| 18 | Code Review | 22-item checklist |
 | 19 | Decision Framework | 10 questions before creating anything |
 | 20 | Boy Scout Rule | 13-point refactor-on-touch checklist |
 

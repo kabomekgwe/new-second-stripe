@@ -7,7 +7,14 @@ CORS origin via FRONTEND_URL environment variable.
 
 ## Full Rules
 
-The `.cursorrules` file contains the complete rule set (30 sections, ~950 lines).
+The `.cursorrules` file contains the complete rule set (30 sections, ~980 lines).
+
+### Critical Production Rules (from web research)
+- **`enableShutdownHooks()`** in bootstrap() — without it, Docker SIGTERM drops in-flight requests
+- **@Global() modules create hidden dependencies** — limit to ConfigModule, DatabaseModule, StripeModule only
+- **Never return raw Error objects or stack traces** in production responses
+- **Provider scope: always SINGLETON** — do NOT use REQUEST or TRANSIENT scope
+- **Circular dependencies mean bad architecture** — restructure before reaching for forwardRef()
 
 ### 30 Sections At a Glance
 
@@ -16,31 +23,31 @@ The `.cursorrules` file contains the complete rule set (30 sections, ~950 lines)
 | 1 | Universal Principles | Simplicity first, Rule of Three, Boy Scout, Delete > Deprecate |
 | 2 | Zero Tolerance | No delegation services, no Symbol tokens, no barrels, max 2-level nesting |
 | 3 | KISS/DRY/YAGNI/TDD | No pattern without a problem, extract after 3 uses |
-| 4 | Frontend API Contract | Backend is source of truth, consistent error shape |
-| 5 | Module Architecture | Feature modules self-contained, global DatabaseModule/StripeModule |
+| 4 | Frontend API Contract | Backend is source of truth, consistent error shape, never leak stack traces |
+| 5 | Module Architecture | Feature modules self-contained, global = only infrastructure, document every @Global() |
 | 6 | Request Lifecycle | Middleware → Guards → Interceptors → Pipes → Controller → Service → Filters |
 | 7 | Controllers | Thin, declarative, no business logic |
-| 8 | Services | Only when real logic exists beyond delegation |
+| 8 | Services | Only when real logic exists, always singleton scope, always constructor injection |
 | 9 | Data Access | OracleService with raw SQL, bind params, MERGE INTO, sql-mappers |
 | 10 | DTOs & Validation | class-validator, no inheritance, global ValidationPipe |
 | 11 | Guards | AuthenticatedGuard on protected, no RolesGuard until needed |
 | 12 | Pipes | ValidationPipe covers 95%, no custom pipes unless needed |
 | 13 | Interceptors | Logging + serialization already global, don't add more |
-| 14 | Exception Filters | Built-in exceptions, don't catch-and-rethrow |
+| 14 | Exception Filters | Built-in exceptions, don't catch-and-rethrow, never leak stack traces |
 | 15 | Stripe | Thin wrappers, idempotency keys, webhooks need raw body |
 | 16 | Auth & Sessions | Passport + Redis + CSRF, session regeneration on login |
 | 17 | Configuration | ConfigService, no wrappers, required vs optional env vars |
-| 18 | Security | Helmet, CORS, CSRF, rate limiting, session security |
+| 18 | Security | Helmet, CORS, CSRF, rate limiting, no stack traces, no internal IDs in responses |
 | 19 | Scheduling | @Cron for billing, tasks must be idempotent |
-| **20** | **Pagination** | **offset/limit, default 20, max 100, allowlist sort values** |
-| **21** | **Health Checks** | **Simple /health, no auth, no DB queries** |
-| **22** | **Rate Limit Errors** | **ThrottlerGuard 429s, @Throttle on auth, no custom handling** |
-| **23** | **Docker** | **Multi-stage builds, health checks, migrations on startup** |
+| 20 | Pagination | offset/limit, default 20, max 100, allowlist sort values |
+| 21 | Health Checks | Simple /health, no auth, no DB queries |
+| 22 | Rate Limit Errors | ThrottlerGuard 429s, @Throttle on auth, no custom handling |
+| 23 | Docker | Multi-stage, enableShutdownHooks(), health checks, @Global() warning |
 | 24 | Testing | Service + mapper tests, no simple-delegation tests |
 | 25 | Logging | NestJS Logger, no console.log, no sensitive data |
 | 26 | TypeScript | strict, unknown > any, no premature generics |
 | 27 | Git | Small commits, WHAT and WHY |
-| 28 | Code Review | Checklist including pagination, health checks |
+| 28 | Code Review | Checklist including pagination, health checks, shutdown hooks |
 | 29 | Decision Framework | 10 questions before creating anything |
 | 30 | Boy Scout Rule | 10-point refactor-on-touch checklist |
 

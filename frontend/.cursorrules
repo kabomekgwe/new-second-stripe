@@ -240,10 +240,10 @@ export async function createPayment(formData: FormData) {
 ```tsx
 // new-payment-form.tsx ('use client')
 import { createPayment } from './actions/create-payment';
-import { useFormState } from 'react-dom';
+import { useActionState } from 'react-dom';
 
 export function NewPaymentForm() {
-  const [state, formAction] = useFormState(createPayment, null);
+  const [state, formAction] = useActionState(createPayment, null);
   return (
     <form action={formAction}>
       <input name="amountGbp" type="number" required min={1} />
@@ -259,14 +259,163 @@ Server Action RULES:
 - ALWAYS use 'use server' directive at file TOP
 - ALWAYS validate with Zod. Never trust form data.
 - Return serializable objects (no functions, no class instances)
-- Use redirect() for post-mutation navigation
+- Use redirect() for post-mutation navigation. NOTE: redirect() throws a
+  special Next.js error — do NOT wrap it in try/catch or it silently fails.
 - Use revalidatePath() or revalidateTag() to refresh cached data
 - Do NOT create Server Actions that just proxy to API routes without adding value
 
-When to use Server Actions vs RTK Query:
-- Server Actions: ALL form submissions, mutations with redirects
-- RTK Query: Read-only queries needing client-side caching + auto-refetch
-- NEVER use both for the same operation
+### Server Actions Security (CRITICAL)
+
+Server Actions are PUBLIC HTTP POST endpoints. Anyone who knows the function
+ID can call them directly. Client-side auth checks do NOT protect them.
+
+EVERY Server Action MUST follow this order:
+1. **Authenticate** — verify the user is logged in (check session/cookie)
+2. **Parse** — extract data from FormData
+3. **Validate** — Zod schema validation (catches malformed data)
+4. **Authorize** — verify the user can perform THIS action (owns the resource, has the role)
+5. **Mutate** — only NOW perform the side effect
+
+```tsx
+'use server';
+
+import { z } from 'zod';
+import { redirect } from 'next/navigation';
+import { cookies } from 'next/headers';
+
+const schema = z.object({ amountGbp: z.coerce.number().min(1), paymentMethodId: z.string().min(1) });
+
+export async function createPayment(formData: FormData) {
+  // 1. Authenticate
+  const session = await verifySession(cookies());
+  if (!session) return { error: 'Unauthorized' };
+
+  // 2. Parse
+  const parsed = schema.safeParse(Object.fromEntries(formData));
+
+  // 3. Validate
+  if (!parsed.success) return { error: parsed.error.flatten().fieldErrors };
+
+  // 4. Authorize — e.g., check payment method belongs to this user
+  const ownsMethod = await verifyPaymentMethodOwnership(session.userId, parsed.data.paymentMethodId);
+  if (!ownsMethod) return { error: 'Payment method not found' };
+
+  // 5. Mutate
+  const result = await submitPayment(session.userId, parsed.data);
+  if (!result.ok) return { error: 'Payment failed' };
+  redirect('/payments');
+}
+```
+
+BANNED:
+- Validating but NOT authenticating (anyone can call the action)
+- Authenticating but NOT authorizing (user can access other users' data)
+- Returning sensitive data in the response (strip before returning)
+- Using try/catch around redirect() — it throws, that is expected
+
+### useOptimistic for Instant UI Feedback
+
+For mutations where the user expects immediate feedback (payment submissions,
+profile updates), use useOptimistic to show the expected state before the
+server confirms:
+
+```tsx
+'use client';
+import { useOptimistic } from 'react';
+import { useActionState } from 'react-dom';
+import { deletePaymentMethod } from './actions';
+
+export function PaymentMethodsList({ methods }: { methods: PaymentMethodResponse[] }) {
+  const [optimisticMethods, removeOptimistic] = useOptimistic(methods, (state, id: string) =>
+    state.filter(m => m.id !== id),
+  );
+
+  async function handleDelete(id: string) {
+    removeOptimistic(id); // UI updates instantly
+    await deletePaymentMethod(id); // server confirms or rolls back
+  }
+
+  return (
+    u003culu003e
+      {optimisticMethods.map(m => (
+        u003cli key={m.id}u003e
+          {m.brand} •••• {m.last4}
+          u003cbutton onClick={() => handleDelete(m.id)}u003eRemoveu003c/buttonu003e
+        u003c/liu003e
+      ))}
+    u003c/ulu003e
+  );
+}
+```
+
+RULES:
+- Use useOptimistic for DELETE and status-toggle actions (instant removal/toggle)
+- Do NOT use for creation that needs server-generated IDs (nothing to show yet)
+- useOptimistic auto-rolls back if the action fails — handle errors gracefully
+
+When to use Server Actions vs RTK Query Mutations:
+
+This project uses RTK Query for BOTH reads AND mutations. The tag-based cache
+invalidation system is the primary data synchronization mechanism. Do NOT break it.
+
+**RTK Query mutations (USE FOR most mutations):**
+- When the mutation result needs to invalidate cached data (e.g., create payment
+  -> refetch payment list via invalidatesTags: ['Payments'])
+- When optimistic updates improve UX (e.g., delete payment method -> instant removal)
+- When the user stays on the same page and expects the list to update immediately
+- When you need the mutation response data in the client immediately
+
+Current RTK Query mutations (DO NOT REPLACE):
+| Mutation | Invalidates | Why RTK Query |
+|---|---|---|
+| createPaymentIntent | ['Payments'] | New payment appears in list immediately |
+| syncPaymentMethod | ['PaymentMethods'] | New card appears in list immediately |
+| setDefaultMethod | ['PaymentMethods'] | Default badge updates immediately |
+| deleteMethod | ['PaymentMethods'] | Card disappears from list immediately |
+| triggerBilling | ['Billing'] | New charge appears in history immediately |
+| login/register | ['User'] | User data refetches after auth change |
+| updateProfile | ['User'] | Profile data refetches after update |
+| logout | resetApiState | Clears all cached data on logout |
+
+**Server Actions (USE FOR specific cases):**
+- Mutations that redirect to a NEW page after success (e.g., login -> redirect to
+  dashboard; the new page fetches fresh data server-side anyway, so cache
+  invalidation is irrelevant)
+- Mutations where the result does NOT affect any cached RTK Query data
+- When you explicitly want Zod server validation + the form action pattern
+  AND the mutation does not need to invalidate RTK Query cache
+
+**The Bridge Pattern (use both):**
+If you want to use a Server Action but also need RTK Query cache invalidation:
+
+```tsx
+'use client';
+import { useActionState } from 'react-dom';
+import { createPayment } from './actions';
+import { useStore } from 'react-redux';
+import { apiSlice } from '@/lib/store/api';
+
+export function PaymentForm() {
+  const store = useStore();
+  const [state, formAction] = useActionState(createPayment, null);
+
+  async function handleSubmit(formData: FormData) {
+    const result = await formAction(formData);  // Server Action runs
+    if (!result?.error) {
+      // Manually invalidate RTK Query cache so client-side lists update
+      store.dispatch(apiSlice.util.invalidateTags(['Payments']));
+    }
+  }
+
+  return <form action={handleSubmit}>...</form>;
+}
+```
+
+RULES:
+- Default to RTK Query mutations for any mutation that invalidates cached data
+- Only reach for Server Actions when redirecting away or when cache invalidation is irrelevant
+- Do NOT replace working RTK Query mutations with Server Actions without a concrete reason
+- The Bridge Pattern is for migration only — if RTK Query works, keep RTK Query
 
 ### Data Fetching Standards
 
@@ -290,15 +439,24 @@ RULES:
 - Existing RTK Query endpoints: do NOT remove working code, but consider migrating reads
 - Do NOT create "dual fetching" (server AND RTK Query for same data)
 
-**Caching:**
+**Caching (IMPORTANT: fetch defaults to no-store since Next.js 15):**
+
+By default, EVERY `fetch()` call is UNCACHED. You MUST explicitly opt in to
+caching using one of these:
+
 ```ts
-fetch(url, { cache: 'force-cache' });      // Static (build time)
-fetch(url, { next: { revalidate: 60 } });   // Revalidate every 60s
-fetch(url, { cache: 'no-store' });           // Always fresh
+fetch(url, { cache: 'force-cache' });              // Cache at build time (static)
+fetch(url, { next: { revalidate: 60 } });               // Revalidate every 60s (ISR)
+fetch(url);                                              // no-store (the DEFAULT — always fresh)
 ```
 
-Dynamic rendering triggers: cookies(), headers(), searchParams prop
+RULES:
+- If your data changes per user (billing, payments) → do NOT cache (default is correct)
+- If your data is the same for all users (currency rates) → use `revalidate: 300` (5 min)
+- If your data never changes → use `force-cache` (build time)
+- Do NOT add `cache: 'no-store' explicitly — it is already the default
 
+Dynamic rendering triggers: cookies(), headers(), searchParams prop
 ### Metadata API
 
 ```tsx
@@ -344,7 +502,7 @@ The matcher config is REQUIRED. Do NOT run on static assets.
 ### Navigation
 
 - `<Link>` for ALL internal navigation. NOT `<a>` tags.
-- `redirect()` in Server Components and Server Actions.
+- `redirect()` in Server Components and Server Actions. It THROWS a special error — never wrap in try/catch.
 - `notFound()` when data is not found.
 - `useRouter()` ONLY in Client Components for programmatic navigation.
 - NEVER `window.location.href` for navigation (breaks client routing).
@@ -366,12 +524,13 @@ The matcher config is REQUIRED. Do NOT run on static assets.
 ```
 State type           | Where to put it              | Example
 -------------------- | ---------------------------- | ----------------------
-Server-fetched data  | Server Component + fetch()    | Billing history, profile
+Server-fetched data  | Server Component + fetch()    | Billing history (if no RTK Query endpoint)
 URL state           | searchParams / URL hash       | Active tab, page number
 Form state          | useState / useActionState      | Input values, validation
+Client mutations    | RTK Query mutations (with invalidatesTags) | Create payment, delete card
 Global client state | Redux store (RTK Query)       | Auth session, CSRF token
 Component UI state  | useState                      | Modal open, dropdown open
-Shared client data  | RTK Query (with tags)          | Payment methods list
+Shared client data  | RTK Query queries (with providesTags)  | Payment methods list
 ```
 
 ### RTK Query — When to Add Endpoints
@@ -434,11 +593,11 @@ For ALL other forms: native `<form>` + Server Actions + Zod.
 
 ```tsx
 'use client';
-import { useFormState } from 'react-dom';
+import { useActionState } from 'react-dom';
 import { createPayment } from './actions/create-payment';
 
 export function PaymentForm() {
-  const [state, formAction] = useFormState(createPayment, null);
+  const [state, formAction] = useActionState(createPayment, null);
   return <form action={formAction}>...</form>;
 }
 ```
@@ -579,6 +738,7 @@ export function PaymentMethodCard({ method }: { method: PaymentMethodResponse })
 - CSRF tokens handled by RTK Query interceptor (api.ts) — do NOT duplicate
 - Server env: NEXT_PUBLIC_* are sent to the browser. Server secrets stay server-only.
 - Server Actions validate ALL input with Zod. Never trust client data.
+- RTK Query mutations handle CSRF automatically (api.ts interceptor). Server Actions need manual auth checks.
 - Do NOT store sensitive data in localStorage. Use httpOnly cookies (already done).
 - Do NOT disable CSP. Helmet is configured in the backend.
 
@@ -774,7 +934,7 @@ Before finishing ANY task:
 - [ ] No premature configuration/abstraction added
 - [ ] No new Redux slice without multi-page need
 - [ ] No new RTK Query endpoint for server-fetchable data
-- [ ] Server Actions used for mutations, RTK Query for interactive reads
+- [ ] RTK Query mutations preserved (do not replace with Server Actions without reason)
 - [ ] Zod validation on ALL Server Action inputs
 - [ ] loading.tsx exists for server-fetched pages
 - [ ] error.tsx exists for routes that can fail
